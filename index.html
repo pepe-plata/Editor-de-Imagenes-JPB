@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#4f46e5" />
+<meta name="description" content="Editor de Imágenes JPB — Editor tipo Paint para Android y Windows" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Editor JPB" />
+
+<title>Editor de Imagenes JPB</title>
+
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="styles.css" />
+
+<script>
+  (function detectPlatform() {
+    const ua = navigator.userAgent || '';
+    const isAndroid = /Android/i.test(ua);
+    const isWindows = /Windows/i.test(ua);
+    const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+    const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+    const root = document.documentElement;
+    if (isAndroid) root.classList.add('is-android');
+    if (isWindows) root.classList.add('is-windows');
+    if (isIOS)     root.classList.add('is-ios');
+    if (isTouch)   root.classList.add('is-touch');
+
+    window.__JPB_PLATFORM__ = { isAndroid, isWindows, isIOS, isTouch };
+
+    try {
+      const saved = localStorage.getItem('jpb-theme');
+      if (saved === 'dark' || saved === 'light') {
+        root.setAttribute('data-theme', saved);
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        root.setAttribute('data-theme', 'dark');
+      }
+    } catch (e) {}
+  })();
+</script>
+</head>
+
+<body>
+
+<!-- ════════════════════════════════════════════════════════════
+     SPLASH (2 s)
+     ════════════════════════════════════════════════════════════ -->
+<div id="splash" class="splash" aria-hidden="true">
+  <div class="splash-inner">
+    <img src="icons/icon-512.png" alt="" class="splash-icon" onerror="this.style.display='none'" />
+    <h1 class="splash-title">Editor de Imagenes JPB</h1>
+    <p class="splash-subtitle">Editor de Imagenes tipo PAINT</p>
+    <div class="splash-spinner"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     HEADER
+     ════════════════════════════════════════════════════════════ -->
+<header id="appHeader" class="app-header" role="banner">
+  <input
+    id="fileNameInput"
+    class="file-name-input"
+    type="text"
+    value="Sin título"
+    spellcheck="false"
+    aria-label="Nombre del archivo"
+  />
+  <div class="header-right">
+    <button id="btnOpen" class="icon-btn" title="Abrir (Ctrl+O)" aria-label="Abrir">
+      <img src="icons/open.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'📂'}))" />
+    </button>
+    <button id="btnNew" class="icon-btn" title="Nuevo lienzo (Ctrl+N)" aria-label="Nuevo">
+      <img src="icons/newimage.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'➕'}))" />
+    </button>
+    <button id="btnSave" class="icon-btn" title="Guardar (Ctrl+S)" aria-label="Guardar">
+      <img src="icons/save.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'💾'}))" />
+    </button>
+    <div class="header-sep"></div>
+    <button id="btnTheme" class="icon-btn" title="Tema claro/oscuro" aria-label="Cambiar tema">
+      <img src="icons/night.png" alt="" class="ico ico-theme-dark" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🌙'}))" />
+      <img src="icons/sun.png" alt="" class="ico ico-theme-light" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'☀️'}))" />
+    </button>
+    <button id="btnHelp" class="icon-btn" title="Ayuda" aria-label="Ayuda">
+      <img src="icons/help.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'❓'}))" />
+    </button>
+  </div>
+</header>
+
+<!-- ════════════════════════════════════════════════════════════
+     BARRA FLOTANTE
+     ════════════════════════════════════════════════════════════ -->
+<div id="toolbar" class="toolbar" role="toolbar" aria-label="Herramientas">
+
+  <button id="btnUndo" class="tb-btn" data-action="undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
+    <img src="icons/undo.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↶'}))" />
+  </button>
+  <button id="btnRedo" class="tb-btn" data-action="redo" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>
+    <img src="icons/redo.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↷'}))" />
+  </button>
+
+  <div class="tb-sep"></div>
+
+  <button class="tb-btn"
+          data-tool="select-rect"
+          data-menu="menuSelect"
+          title="Selección (mantén 500ms para opciones)"
+          aria-label="Selección">
+    <img src="icons/select.png" alt="" class="ico" data-icon onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⬚'}))" />
+  </button>
+
+  <button class="tb-btn"
+          data-tool="pencil"
+          data-menu="menuPencil"
+          title="Lápiz (mantén 500ms para opciones)"
+          aria-label="Lápiz">
+    <img src="icons/pen.png" alt="" class="ico" data-icon onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✏️'}))" />
+  </button>
+
+  <button class="tb-btn"
+          data-tool="shape-rect"
+          data-menu="menuShape"
+          title="Formas (mantén 500ms para opciones)"
+          aria-label="Formas">
+    <img src="icons/rectangle.png" alt="" class="ico" data-icon onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'▭'}))" />
+  </button>
+
+  <div class="tb-sep"></div>
+
+  <button class="tb-btn"
+          data-action="rotate-right"
+          data-menu="menuRotate"
+          title="Rotar (mantén 500ms para opciones)"
+          aria-label="Rotar">
+    <img src="icons/rotate-right.png" alt="" class="ico" data-icon onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↻'}))" />
+  </button>
+
+  <button class="tb-btn"
+          data-action="flip-h"
+          data-menu="menuFlip"
+          title="Voltear (mantén 500ms para opciones)"
+          aria-label="Voltear">
+    <img src="icons/fliphorizontal.png" alt="" class="ico" data-icon onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⇋'}))" />
+  </button>
+
+  <button class="tb-btn" data-action="resize" title="Redimensionar" aria-label="Redimensionar">
+    <img src="icons/resize.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⤢'}))" />
+  </button>
+
+  <div class="tb-sep"></div>
+
+  <button class="tb-btn" data-action="copy" title="Copiar (Ctrl+C)" aria-label="Copiar">
+    <img src="icons/copy.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⧉'}))" />
+  </button>
+
+  <button class="tb-btn" data-action="paste" title="Pegar (Ctrl+V)" aria-label="Pegar">
+    <img src="icons/paste.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'📋'}))" />
+  </button>
+
+  <div class="tb-sep"></div>
+
+  <button class="tb-btn tb-btn-color" data-action="color" title="Color" aria-label="Color">
+    <span id="colorBtnSwatch" class="color-btn-swatch"></span>
+    <span class="tb-caret"></span>
+  </button>
+
+  <button class="tb-btn" data-action="zoom-fit" title="Ajustar a pantalla (0)" aria-label="Ajustar">
+    <img src="icons/resetzoom.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⤢'}))" />
+  </button>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MENÚS FLOTANTES
+     ════════════════════════════════════════════════════════════ -->
+<div id="menuSelect" class="tool-menu" hidden>
+  <button class="tool-menu-item" data-tool="select-rect">
+    <img src="icons/select.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⬚'}))" />
+    <span>Selección rectangular</span>
+  </button>
+  <button class="tool-menu-item" data-tool="select-lasso">
+    <img src="icons/lasso.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🪢'}))" />
+    <span>Selección libre (lazo)</span>
+  </button>
+</div>
+
+<div id="menuPencil" class="tool-menu" hidden>
+  <button class="tool-menu-item" data-tool="pencil">
+    <img src="icons/pen.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✏️'}))" />
+    <span>Lápiz</span>
+  </button>
+  <button class="tool-menu-item" data-tool="brush">
+    <img src="icons/pen.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🖌️'}))" />
+    <span>Pincel</span>
+  </button>
+  <button class="tool-menu-item" data-tool="fill">
+    <img src="icons/paint-bucket.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🪣'}))" />
+    <span>Bote de pintura</span>
+  </button>
+  <button class="tool-menu-item" data-tool="eraser">
+    <img src="icons/eraser2.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🧽'}))" />
+    <span>Borrador</span>
+  </button>
+  <button class="tool-menu-item" data-tool="picker">
+    <img src="icons/pickcolor.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'💧'}))" />
+    <span>Cuentagotas</span>
+  </button>
+  <button class="tool-menu-item" data-tool="text">
+    <img src="icons/text.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'T'}))" />
+    <span>Texto</span>
+  </button>
+</div>
+
+<div id="menuShape" class="tool-menu tool-menu-wide" hidden>
+  <button class="tool-menu-item" data-tool="shape-line">
+    <img src="icons/line.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'╱'}))" />
+    <span>Línea</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-arrow">
+    <img src="icons/arrow.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'➡️'}))" />
+    <span>Flecha</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-rect">
+    <img src="icons/rectangle.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'▭'}))" />
+    <span>Rectángulo</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-square">
+    <img src="icons/square.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'◻'}))" />
+    <span>Cuadrado</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-rounded">
+    <img src="icons/rounded-rectangle.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'▢'}))" />
+    <span>Redondeado</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-circle">
+    <img src="icons/circle.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'●'}))" />
+    <span>Círculo</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-ellipse">
+    <img src="icons/ellipse.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⬭'}))" />
+    <span>Elipse</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-triangle">
+    <img src="icons/triangle.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'△'}))" />
+    <span>Triángulo</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-star">
+    <img src="icons/star.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'★'}))" />
+    <span>Estrella</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-callout">
+    <img src="icons/renteangle_callout.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'💬'}))" />
+    <span>Globo</span>
+  </button>
+  <button class="tool-menu-item" data-tool="shape-callout-oval">
+    <img src="icons/globe_callout.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🗨️'}))" />
+    <span>Globo oval</span>
+  </button>
+</div>
+
+<div id="menuRotate" class="tool-menu" hidden>
+  <button class="tool-menu-item" data-action="rotate-left">
+    <img src="icons/rotate-left.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↺'}))" />
+    <span>90° izquierda</span>
+  </button>
+  <button class="tool-menu-item" data-action="rotate-right">
+    <img src="icons/rotate-right.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↻'}))" />
+    <span>90° derecha</span>
+  </button>
+</div>
+
+<div id="menuFlip" class="tool-menu" hidden>
+  <button class="tool-menu-item" data-action="flip-h">
+    <img src="icons/fliphorizontal.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⇋'}))" />
+    <span>Voltear horizontal</span>
+  </button>
+  <button class="tool-menu-item" data-action="flip-v">
+    <img src="icons/flipvertical.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⇅'}))" />
+    <span>Voltear vertical</span>
+  </button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     DIÁLOGO DE COLOR
+     ════════════════════════════════════════════════════════════ -->
+<div id="colorMenu" class="color-menu" hidden>
+  <div class="color-menu-head">
+    <span>Color</span>
+    <button class="icon-btn" data-close-color title="Cerrar">
+      <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+    </button>
+  </div>
+
+  <div class="color-tabs">
+    <button class="color-tab active" data-ctab="primary">Trazo</button>
+    <button class="color-tab" data-ctab="secondary">Fondo</button>
+  </div>
+
+  <div class="color-tab-panel active" data-cpanel="primary">
+    <input id="colorPrimary" type="color" value="#000000" aria-label="Color de trazo" />
+  </div>
+  <div class="color-tab-panel" data-cpanel="secondary">
+    <input id="colorSecondary" type="color" value="#ffffff" aria-label="Color de fondo" />
+  </div>
+
+  <div class="color-menu-grid" id="colorMenuGrid"></div>
+
+  <div class="color-menu-custom">
+    <label for="colorCustom">Personalizado</label>
+    <input id="colorCustom" type="color" value="#4f46e5" />
+    <button id="colorCustomAdd" class="btn btn-primary">Añadir</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SLIDER VERTICAL
+     ════════════════════════════════════════════════════════════ -->
+<div id="brushSlider" class="brush-slider" hidden>
+  <input
+    id="brushSizeRange"
+    type="range"
+    min="1"
+    max="100"
+    value="4"
+    orient="vertical"
+    aria-label="Tamaño del pincel"
+  />
+  <span id="brushSizeValue" class="brush-slider-value">4</span>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     ÁREA DEL CANVAS
+     ════════════════════════════════════════════════════════════ -->
+<main id="canvasArea" class="canvas-area" aria-label="Área de trabajo">
+  <div id="canvasScroll" class="canvas-scroll">
+    <div id="canvasCenter" class="canvas-center">
+      <div id="canvasWrap" class="canvas-wrap">
+        <canvas id="mainCanvas"></canvas>
+        <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+
+        <div id="handles" class="handles" aria-hidden="true">
+          <div class="handle" data-handle="nw"></div>
+          <div class="handle" data-handle="n"></div>
+          <div class="handle" data-handle="ne"></div>
+          <div class="handle" data-handle="e"></div>
+          <div class="handle" data-handle="se"></div>
+          <div class="handle" data-handle="s"></div>
+          <div class="handle" data-handle="sw"></div>
+          <div class="handle" data-handle="w"></div>
+        </div>
+
+        <div id="shapeHandles" class="shape-handles" hidden>
+          <div class="shape-handle" data-sh="nw"></div>
+          <div class="shape-handle" data-sh="n"></div>
+          <div class="shape-handle" data-sh="ne"></div>
+          <div class="shape-handle" data-sh="e"></div>
+          <div class="shape-handle" data-sh="se"></div>
+          <div class="shape-handle" data-sh="s"></div>
+          <div class="shape-handle" data-sh="sw"></div>
+          <div class="shape-handle" data-sh="w"></div>
+          <div class="shape-handle shape-handle-rotate" data-sh="rotate" title="Rotar"></div>
+        </div>
+
+        <div id="floatingLayer" class="floating-layer" hidden>
+          <canvas id="floatingCanvas" class="floating-canvas"></canvas>
+          <div id="floatRect" class="float-rect">
+            <div class="float-handle" data-fh="nw"></div>
+            <div class="float-handle" data-fh="n"></div>
+            <div class="float-handle" data-fh="ne"></div>
+            <div class="float-handle" data-fh="e"></div>
+            <div class="float-handle" data-fh="se"></div>
+            <div class="float-handle" data-fh="s"></div>
+            <div class="float-handle" data-fh="sw"></div>
+            <div class="float-handle" data-fh="w"></div>
+            <div class="float-handle float-handle-rotate" data-fh="rotate" title="Rotar"></div>
+          </div>
+        </div>
+
+        <!-- ═══════════ EDITOR DE TEXTO FLOTANTE ═══════════ -->
+        <div id="textEditor" class="text-editor" hidden>
+          <div class="text-editor-toolbar" id="textToolbar">
+
+            <!-- Asa de arrastre dedicada -->
+            <div id="teDragHandle" class="te-drag-handle" title="Arrastrar para mover">
+              <span></span><span></span><span></span>
+            </div>
+
+            <select id="teFont" class="te-select" title="Fuente">
+              <option value="system-ui">Sistema</option>
+              <option value="Arial, sans-serif">Arial</option>
+              <option value="'Times New Roman', serif">Times</option>
+              <option value="'Courier New', monospace">Courier</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="Verdana, sans-serif">Verdana</option>
+              <option value="'Comic Sans MS', cursive">Comic Sans</option>
+            </select>
+
+            <input id="teSize" type="number" min="8" max="400" value="32" class="te-num" title="Tamaño" />
+
+            <span class="te-sep"></span>
+
+            <button class="te-btn" id="teBold" title="Negrita"><b>B</b></button>
+            <button class="te-btn" id="teItalic" title="Cursiva"><i>I</i></button>
+            <button class="te-btn" id="teUnderline" title="Subrayado"><u>U</u></button>
+
+            <span class="te-sep"></span>
+
+            <label class="te-color-wrap" title="Color de texto">
+              <span class="te-color-label">A</span>
+              <input id="teColor" type="color" value="#000000" class="te-color" />
+            </label>
+            <label class="te-color-wrap" title="Color de fondo">
+              <span class="te-color-label te-bg">▮</span>
+              <input id="teBg" type="color" value="#ffffff" class="te-color" />
+            </label>
+            <label class="te-checkbox" title="Sin fondo">
+              <input id="teNoBg" type="checkbox" checked />
+              <span>Sin fondo</span>
+            </label>
+
+            <button class="te-btn" id="teEmoji" title="Insertar emoji">😀</button>
+
+            <span class="te-sep"></span>
+
+            <button class="te-btn te-btn-ok" id="teOk" title="Aplicar">✓</button>
+            <button class="te-btn te-btn-cancel" id="teCancel" title="Cancelar">✕</button>
+          </div>
+
+          <div id="teText" class="te-text" contenteditable="true" spellcheck="false"></div>
+          <div class="te-float-handle" data-th="nw"></div>
+          <div class="te-float-handle" data-th="ne"></div>
+          <div class="te-float-handle" data-th="se"></div>
+          <div class="te-float-handle" data-th="sw"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <input id="fileInput" type="file" accept="image/*" hidden />
+  <textarea id="textInput" class="text-input-hidden" spellcheck="false"></textarea>
+</main>
+
+<!-- ════════════════════════════════════════════════════════════
+     FOOTER
+     ════════════════════════════════════════════════════════════ -->
+<footer id="appFooter" class="app-footer" role="contentinfo">
+  <span class="status-item" id="stDim">0 × 0 px</span>
+  <span class="status-sep">•</span>
+  <span class="status-item" id="stSize">0 KB</span>
+  <span class="status-sep">•</span>
+  <span class="status-item" id="stZoom">100%</span>
+  <span class="status-sep">•</span>
+  <span class="status-item status-msg" id="stMsg">Listo</span>
+</footer>
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: EMOJI PICKER
+     ════════════════════════════════════════════════════════════ -->
+<div id="emojiPicker" class="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card modal-card-lg" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <h2>Emojis</h2>
+      <button class="icon-btn" data-close title="Cerrar">
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="emoji-tabs" id="emojiTabs"></div>
+      <div class="emoji-grid" id="emojiGrid"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close>Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: GUARDAR
+     ════════════════════════════════════════════════════════════ -->
+<div id="modalSave" class="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalSaveTitle">
+    <div class="modal-header">
+      <h2 id="modalSaveTitle">Guardar imagen</h2>
+      <button class="icon-btn" data-close title="Cerrar">
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+      </button>
+    </div>
+    <div class="modal-body">
+      <label class="field">
+        <span class="field-label">Nombre de archivo</span>
+        <input id="saveName" type="text" class="text-input" value="imagen" />
+      </label>
+      <label class="field">
+        <span class="field-label">Formato</span>
+        <select id="saveFormat" class="select">
+          <option value="image/png">PNG (transparencia)</option>
+          <option value="image/jpeg">JPG / JPEG</option>
+          <option value="image/webp">WebP</option>
+          <option value="image/bmp">BMP (24-bit)</option>
+        </select>
+      </label>
+      <label class="field" id="qualityField" hidden>
+        <span class="field-label">Calidad: <b id="qualityVal">92</b> %</span>
+        <input id="saveQuality" type="range" min="10" max="100" value="92" />
+      </label>
+      <label class="field checkbox" id="exifField" hidden>
+        <input id="saveExif" type="checkbox" checked />
+        <span>Preservar EXIF original (si existe)</span>
+      </label>
+      <div class="hint">
+        Se guardará como <b id="savePreview">imagen.png</b>.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close>
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+        Cancelar
+      </button>
+      <button id="btnSaveConfirm" class="btn btn-primary">
+        <img src="icons/ok.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✓'}))" />
+        Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: REDIMENSIONAR
+     ════════════════════════════════════════════════════════════ -->
+<div id="modalResize" class="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <h2>Redimensionar imagen</h2>
+      <button class="icon-btn" data-close title="Cerrar">
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="field-grid">
+        <label class="field">
+          <span class="field-label">Ancho (px)</span>
+          <input id="resizeW" type="number" min="1" max="12000" class="text-input" />
+        </label>
+        <label class="field">
+          <span class="field-label">Alto (px)</span>
+          <input id="resizeH" type="number" min="1" max="12000" class="text-input" />
+        </label>
+      </div>
+      <label class="field checkbox">
+        <input id="resizeRatio" type="checkbox" checked />
+        <span>Mantener proporción</span>
+      </label>
+      <label class="field">
+        <span class="field-label">O por porcentaje</span>
+        <input id="resizePct" type="number" min="1" max="1000" value="100" class="text-input" />
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close>
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+        Cancelar
+      </button>
+      <button id="btnResizeConfirm" class="btn btn-primary">
+        <img src="icons/ok.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✓'}))" />
+        Aplicar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: NUEVO LIENZO
+     ════════════════════════════════════════════════════════════ -->
+<div id="modalNew" class="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card modal-card-lg" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <h2>Nuevo lienzo</h2>
+      <button class="icon-btn" data-close title="Cerrar">
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+      </button>
+    </div>
+    <div class="modal-body">
+      <label class="field">
+        <span class="field-label">Tamaño de hoja</span>
+        <select id="newPreset" class="select"></select>
+      </label>
+      <div class="field-grid">
+        <label class="field">
+          <span class="field-label">Ancho (px)</span>
+          <input id="newW" type="number" min="1" max="12000" value="600" class="text-input" />
+        </label>
+        <label class="field">
+          <span class="field-label">Alto (px)</span>
+          <input id="newH" type="number" min="1" max="12000" value="800" class="text-input" />
+        </label>
+      </div>
+      <label class="field checkbox">
+        <input id="newTransparent" type="checkbox" />
+        <span>Fondo transparente</span>
+      </label>
+      <div class="hint" id="newHint">600 × 800 px — tamaño por defecto</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close>
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+        Cancelar
+      </button>
+      <button id="btnNewConfirm" class="btn btn-primary">
+        <img src="icons/ok.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✓'}))" />
+        Crear
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: AYUDA
+     ════════════════════════════════════════════════════════════ -->
+<div id="modalHelp" class="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card modal-card-lg" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <h2>Ayuda — Editor de Imagenes JPB</h2>
+      <button class="icon-btn" data-close title="Cerrar">
+        <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="android">🤖 Android</button>
+        <button class="tab" data-tab="windows">🪟 Windows</button>
+        <button class="tab" data-tab="shortcuts">⌨️ Atajos</button>
+        <button class="tab" data-tab="general">ℹ️ General</button>
+      </div>
+
+      <div class="tab-panel active" data-panel="android">
+        <ul class="help-list">
+          <li><b>1 dedo</b> — dibuja.</li>
+          <li><b>2 dedos</b> — pinch zoom + pan.</li>
+          <li><b>Doble toque</b> — alterna 100 % / ajustar.</li>
+          <li><b>Long press 500 ms</b> sobre botones con submenú → muestra opciones.</li>
+          <li><b>Selección flotante</b>: arrastra para mover, usa handles para redim/rotar.</li>
+          <li><b>Editor de texto</b>: usa el asa ⋮⋮ para arrastrar el cuadro.</li>
+        </ul>
+      </div>
+      <div class="tab-panel" data-panel="windows">
+        <ul class="help-list">
+          <li><b>Clic izquierdo</b> — dibuja.</li>
+          <li><b>Espacio + arrastrar</b> — pan.</li>
+          <li><b>Rueda</b> — zoom.</li>
+          <li><b>Shift + rueda</b> — scroll horizontal.</li>
+          <li><b>Alt + rueda</b> — scroll vertical.</li>
+          <li><b>Clic sostenido 500 ms</b> sobre botones con submenú → muestra opciones.</li>
+          <li><b>Esc</b> — fija la selección flotante o cierra el editor de texto.</li>
+        </ul>
+      </div>
+      <div class="tab-panel" data-panel="shortcuts">
+        <ul class="help-list two-col">
+          <li><kbd>Ctrl</kbd>+<kbd>N</kbd> — Nuevo</li>
+          <li><kbd>Ctrl</kbd>+<kbd>O</kbd> — Abrir</li>
+          <li><kbd>Ctrl</kbd>+<kbd>S</kbd> — Guardar</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> — Deshacer</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Y</kbd> — Rehacer</li>
+          <li><kbd>Ctrl</kbd>+<kbd>C</kbd> — Copiar</li>
+          <li><kbd>Ctrl</kbd>+<kbd>V</kbd> — Pegar</li>
+          <li><kbd>+</kbd>/<kbd>-</kbd> — Zoom</li>
+          <li><kbd>0</kbd> — Ajustar</li>
+          <li><kbd>1</kbd> — Zoom 100 %</li>
+          <li><kbd>[</kbd>/<kbd>]</kbd> — Grosor</li>
+          <li><kbd>P</kbd> — Lápiz</li>
+          <li><kbd>B</kbd> — Pincel</li>
+          <li><kbd>E</kbd> — Goma</li>
+          <li><kbd>F</kbd> — Relleno</li>
+          <li><kbd>T</kbd> — Texto</li>
+          <li><kbd>I</kbd> — Cuentagotas</li>
+          <li><kbd>Esc</kbd> — Fijar / cancelar</li>
+        </ul>
+      </div>
+      <div class="tab-panel" data-panel="general">
+        <ul class="help-list">
+          <li><b>Formatos</b>: PNG, JPG, WebP, BMP, GIF (importación).</li>
+          <li><b>Privacidad</b>: todo el procesamiento es local.</li>
+          <li><b>PWA</b>: instalable en Android y Windows.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" data-close>Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js" type="module"></script>
+
+</body>
+</html>
