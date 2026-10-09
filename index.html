@@ -184,6 +184,10 @@
     <img src="icons/lasso.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🪢'}))" />
     <span>Selección libre (lazo)</span>
   </button>
+  <button class="tool-menu-item" data-tool="select-wand">
+    <img src="icons/magic-wand.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🪄'}))" />
+    <span>Varita mágica</span>
+  </button>
 </div>
 
 <div id="menuPencil" class="tool-menu" hidden>
@@ -611,9 +615,8 @@
 
       <div class="tab-panel active" data-panel="android">
         <ul class="help-list">
-          <li><b>1 dedo</b> — dibuja.</li>
-          <li><b>2 dedos paralelos</b> — pan (scroll).</li>
-          <li><b>2 dedos separándose</b> — zoom desde el centro de los dedos.</li>
+          <li><b>1 dedo</b> — dibuja sobre el canvas; fuera del canvas hace pan.</li>
+          <li><b>2 dedos</b> — zoom desde el punto medio de los dedos.</li>
           <li><b>Doble toque</b> — alterna 100 % / ajustar.</li>
           <li><b>Long press 500 ms</b> sobre botones con submenú → muestra opciones.</li>
         </ul>
@@ -647,6 +650,7 @@
           <li><kbd>F</kbd> — Relleno</li>
           <li><kbd>T</kbd> — Texto</li>
           <li><kbd>I</kbd> — Cuentagotas</li>
+          <li><kbd>W</kbd> — Varita mágica</li>
         </ul>
       </div>
       <div class="tab-panel" data-panel="general">

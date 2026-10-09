@@ -50,6 +50,9 @@ body {
 
   --checker-a:     #ffffff;
   --checker-b:     #e5e7eb;
+
+  /* Nuevo: tamaño de los handles */
+  --handle-size:   18px;
 }
 
 :root[data-theme="dark"] {
@@ -481,8 +484,6 @@ body {
   position: absolute; inset: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  /* ✅ Ahora los gestos se capturan a nivel de todo el área del canvas,
-     no solo sobre los canvas element. */
   touch-action: none;
   background: transparent;
   border: 0;
@@ -528,34 +529,42 @@ body {
   display: block;
 }
 
-/* ─── Handles del canvas ──────────────────────────────────── */
+/* ─── Handles del canvas — GRANDES y con tamaño en píxeles de PANTALLA ── */
 .handles {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* El wrap entero está escalado por transform: scale(z).
+     Los handles se contra-escalan por JS con transform: scale(1/z) para
+     que mantengan 18px reales en pantalla a cualquier zoom. */
 }
 .handle {
   position: absolute;
-  width: 14px; height: 14px;
+  width: var(--handle-size);
+  height: var(--handle-size);
   background: var(--primary);
-  border: 2px solid #fff;
-  border-radius: 3px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  border: 3px solid #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45);
   pointer-events: auto;
-  transform-origin: center;
+  /* Centrado exacto en la esquina/borde */
+  margin-left: calc(var(--handle-size) / -2);
+  margin-top:  calc(var(--handle-size) / -2);
+  transform-origin: center center;
   opacity: 0;
   transition: opacity 160ms ease;
   z-index: 3;
+  touch-action: none;
 }
 .canvas-wrap.show-handles .handle { opacity: 1; }
-.handle[data-handle="nw"] { top: -7px; left: -7px;                 cursor: nwse-resize; }
-.handle[data-handle="n"]  { top: -7px; left: calc(50% - 7px);      cursor: ns-resize;   }
-.handle[data-handle="ne"] { top: -7px; right: -7px;                cursor: nesw-resize; }
-.handle[data-handle="e"]  { top: calc(50% - 7px); right: -7px;     cursor: ew-resize;   }
-.handle[data-handle="se"] { bottom: -7px; right: -7px;             cursor: nwse-resize; }
-.handle[data-handle="s"]  { bottom: -7px; left: calc(50% - 7px);   cursor: ns-resize;   }
-.handle[data-handle="sw"] { bottom: -7px; left: -7px;              cursor: nesw-resize; }
-.handle[data-handle="w"]  { top: calc(50% - 7px); left: -7px;      cursor: ew-resize;   }
+.handle[data-handle="nw"] { top: 0;    left: 0;                cursor: nwse-resize; }
+.handle[data-handle="n"]  { top: 0;    left: 50%;              cursor: ns-resize;   }
+.handle[data-handle="ne"] { top: 0;    left: 100%;             cursor: nesw-resize; }
+.handle[data-handle="e"]  { top: 50%;  left: 100%;             cursor: ew-resize;   }
+.handle[data-handle="se"] { top: 100%; left: 100%;             cursor: nwse-resize; }
+.handle[data-handle="s"]  { top: 100%; left: 50%;              cursor: ns-resize;   }
+.handle[data-handle="sw"] { top: 100%; left: 0;                cursor: nesw-resize; }
+.handle[data-handle="w"]  { top: 50%;  left: 0;                cursor: ew-resize;   }
 
 /* ─── Handles de figura ───────────────────────────────────── */
 .shape-handles {
@@ -569,34 +578,42 @@ body {
 }
 .shape-handle {
   position: absolute;
-  width: 12px; height: 12px;
+  width: var(--handle-size);
+  height: var(--handle-size);
   background: #fff;
-  border: 2px solid var(--primary);
+  border: 3px solid var(--primary);
   border-radius: 50%;
   pointer-events: auto;
-  transform-origin: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  margin-left: calc(var(--handle-size) / -2);
+  margin-top:  calc(var(--handle-size) / -2);
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  transform-origin: center center;
+  touch-action: none;
 }
-.shape-handle[data-sh="nw"] { top: -6px; left: -6px;                 cursor: nwse-resize; }
-.shape-handle[data-sh="n"]  { top: -6px; left: calc(50% - 6px);      cursor: ns-resize;   }
-.shape-handle[data-sh="ne"] { top: -6px; right: -6px;                cursor: nesw-resize; }
-.shape-handle[data-sh="e"]  { top: calc(50% - 6px); right: -6px;     cursor: ew-resize;   }
-.shape-handle[data-sh="se"] { bottom: -6px; right: -6px;             cursor: nwse-resize; }
-.shape-handle[data-sh="s"]  { bottom: -6px; left: calc(50% - 6px);   cursor: ns-resize;   }
-.shape-handle[data-sh="sw"] { bottom: -6px; left: -6px;              cursor: nesw-resize; }
-.shape-handle[data-sh="w"]  { top: calc(50% - 6px); left: -6px;      cursor: ew-resize;   }
+.shape-handle[data-sh="nw"] { top: 0;    left: 0;     cursor: nwse-resize; }
+.shape-handle[data-sh="n"]  { top: 0;    left: 50%;   cursor: ns-resize;   }
+.shape-handle[data-sh="ne"] { top: 0;    left: 100%;  cursor: nesw-resize; }
+.shape-handle[data-sh="e"]  { top: 50%;  left: 100%;  cursor: ew-resize;   }
+.shape-handle[data-sh="se"] { top: 100%; left: 100%;  cursor: nwse-resize; }
+.shape-handle[data-sh="s"]  { top: 100%; left: 50%;   cursor: ns-resize;   }
+.shape-handle[data-sh="sw"] { top: 100%; left: 0;     cursor: nesw-resize; }
+.shape-handle[data-sh="w"]  { top: 50%;  left: 0;     cursor: ew-resize;   }
 .shape-handle-rotate {
-  top: -34px !important; left: calc(50% - 6px) !important;
-  width: 14px; height: 14px;
+  top: calc(-24px - var(--handle-size)) !important;
+  left: calc(50% - var(--handle-size) / 2) !important;
+  width: 22px;
+  height: 22px;
   background: var(--primary);
-  border: 2px solid #fff;
+  border: 3px solid #fff;
   cursor: grab;
+  margin-left: 0;
+  margin-top: 0;
 }
 .shape-handle-rotate::after {
   content: "";
   position: absolute;
-  top: 12px; left: 5px;
-  width: 2px; height: 20px;
+  top: 19px; left: 8px;
+  width: 3px; height: 24px;
   background: var(--primary);
   opacity: .6;
 }
@@ -627,39 +644,46 @@ body {
 }
 .float-handle {
   position: absolute;
-  width: 12px; height: 12px;
+  width: var(--handle-size);
+  height: var(--handle-size);
   background: #fff;
-  border: 2px solid var(--primary);
+  border: 3px solid var(--primary);
   border-radius: 50%;
   pointer-events: auto;
-  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  margin-left: calc(var(--handle-size) / -2);
+  margin-top:  calc(var(--handle-size) / -2);
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  touch-action: none;
 }
-.float-handle[data-fh="nw"] { top: -6px; left: -6px;                 cursor: nwse-resize; }
-.float-handle[data-fh="n"]  { top: -6px; left: calc(50% - 6px);      cursor: ns-resize;   }
-.float-handle[data-fh="ne"] { top: -6px; right: -6px;                cursor: nesw-resize; }
-.float-handle[data-fh="e"]  { top: calc(50% - 6px); right: -6px;     cursor: ew-resize;   }
-.float-handle[data-fh="se"] { bottom: -6px; right: -6px;             cursor: nwse-resize; }
-.float-handle[data-fh="s"]  { bottom: -6px; left: calc(50% - 6px);   cursor: ns-resize;   }
-.float-handle[data-fh="sw"] { bottom: -6px; left: -6px;              cursor: nesw-resize; }
-.float-handle[data-fh="w"]  { top: calc(50% - 6px); left: -6px;      cursor: ew-resize;   }
+.float-handle[data-fh="nw"] { top: 0;    left: 0;     cursor: nwse-resize; }
+.float-handle[data-fh="n"]  { top: 0;    left: 50%;   cursor: ns-resize;   }
+.float-handle[data-fh="ne"] { top: 0;    left: 100%;  cursor: nesw-resize; }
+.float-handle[data-fh="e"]  { top: 50%;  left: 100%;  cursor: ew-resize;   }
+.float-handle[data-fh="se"] { top: 100%; left: 100%;  cursor: nwse-resize; }
+.float-handle[data-fh="s"]  { top: 100%; left: 50%;   cursor: ns-resize;   }
+.float-handle[data-fh="sw"] { top: 100%; left: 0;     cursor: nesw-resize; }
+.float-handle[data-fh="w"]  { top: 50%;  left: 0;     cursor: ew-resize;   }
 .float-handle-rotate {
-  top: -34px !important; left: calc(50% - 6px) !important;
-  width: 14px; height: 14px;
+  top: calc(-24px - var(--handle-size)) !important;
+  left: calc(50% - var(--handle-size) / 2) !important;
+  width: 22px; height: 22px;
   background: var(--primary);
-  border: 2px solid #fff;
+  border: 3px solid #fff;
   cursor: grab;
+  margin-left: 0;
+  margin-top: 0;
 }
 .float-handle-rotate::after {
   content: "";
   position: absolute;
-  top: 12px; left: 5px;
-  width: 2px; height: 20px;
+  top: 19px; left: 8px;
+  width: 3px; height: 24px;
   background: var(--primary);
   opacity: .6;
 }
 
 /* ════════════════════════════════════════════════════════════
-   EDITOR DE TEXTO FLOTANTE
+   EDITOR DE TEXTO FLOTANTE — barra con tamaño FIJO
    ════════════════════════════════════════════════════════════ */
 .text-editor {
   position: absolute;
@@ -668,6 +692,7 @@ body {
   min-height: 80px;
   box-sizing: border-box;
   pointer-events: auto;
+  /* El editor SÍ escala con el canvas porque vive dentro del wrap */
 }
 .text-editor-toolbar {
   position: absolute;
@@ -687,13 +712,15 @@ body {
   overflow-y: hidden;
   scrollbar-width: none;
   z-index: 2;
+  /* ✅ Contrarrestar el zoom del canvas: la toolbar siempre al mismo tamaño */
+  transform-origin: bottom left;
 }
 .text-editor-toolbar::-webkit-scrollbar { display: none; }
 
 .te-drag-handle {
   flex-shrink: 0;
-  width: 24px;
-  height: 28px;
+  width: 28px;
+  height: 32px;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -709,33 +736,33 @@ body {
 .te-drag-handle:active { cursor: grabbing; }
 .te-drag-handle span {
   display: block;
-  width: 12px;
+  width: 14px;
   height: 2px;
   background: var(--text-3);
   border-radius: 1px;
 }
 
 .te-select, .te-num {
-  height: 28px;
-  padding: 0 6px;
+  height: 32px;
+  padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface-2);
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   outline: none;
   flex-shrink: 0;
 }
-.te-num { width: 52px; text-align: center; }
+.te-num { width: 56px; text-align: center; }
 
 .te-btn {
-  width: 28px; height: 28px;
+  width: 32px; height: 32px;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -747,14 +774,14 @@ body {
 .te-btn-cancel:hover { background: #b91c1c; }
 
 .te-sep {
-  width: 1px; height: 20px;
+  width: 1px; height: 22px;
   background: var(--border);
   margin: 0 2px;
   flex-shrink: 0;
 }
 .te-color-wrap {
   position: relative;
-  width: 28px; height: 28px;
+  width: 32px; height: 32px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -764,7 +791,7 @@ body {
   overflow: hidden;
 }
 .te-color-label {
-  font-weight: 700; font-size: 14px;
+  font-weight: 700; font-size: 15px;
   pointer-events: none;
   color: var(--text);
 }
@@ -777,7 +804,7 @@ body {
 }
 .te-checkbox {
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 11px; color: var(--text-2);
+  font-size: 12px; color: var(--text-2);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -806,17 +833,21 @@ body {
 
 .te-float-handle {
   position: absolute;
-  width: 12px; height: 12px;
+  width: var(--handle-size);
+  height: var(--handle-size);
   background: #fff;
-  border: 2px solid var(--primary);
+  border: 3px solid var(--primary);
   border-radius: 50%;
-  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
   z-index: 3;
+  margin-left: calc(var(--handle-size) / -2);
+  margin-top:  calc(var(--handle-size) / -2);
+  touch-action: none;
 }
-.te-float-handle[data-th="nw"] { top: -6px; left: -6px;                 cursor: nwse-resize; }
-.te-float-handle[data-th="ne"] { top: -6px; right: -6px;                cursor: nesw-resize; }
-.te-float-handle[data-th="se"] { bottom: -6px; right: -6px;             cursor: nwse-resize; }
-.te-float-handle[data-th="sw"] { bottom: -6px; left: -6px;              cursor: nesw-resize; }
+.te-float-handle[data-th="nw"] { top: 0;    left: 0;     cursor: nwse-resize; }
+.te-float-handle[data-th="ne"] { top: 0;    left: 100%;  cursor: nesw-resize; }
+.te-float-handle[data-th="se"] { top: 100%; left: 100%;  cursor: nwse-resize; }
+.te-float-handle[data-th="sw"] { top: 100%; left: 0;     cursor: nesw-resize; }
 
 /* ─── Footer ───────────────────────────────────────────────── */
 .app-footer {
@@ -1060,6 +1091,8 @@ kbd {
 
 /* ─── Responsive ───────────────────────────────────────────── */
 @media (max-width: 720px) {
+  :root { --handle-size: 22px; }
+
   .file-name-input { max-width: 90px; font-size: 13px; }
   .toolbar {
     top: calc(var(--header-h) + env(safe-area-inset-top, 0) + 6px);
@@ -1083,6 +1116,9 @@ kbd {
   .header-sep { display: none; }
   .canvas-center { padding: 100px 16px; }
   .te-text { font-size: 22px; }
+  .te-btn { width: 34px; height: 34px; font-size: 15px; }
+  .te-select, .te-num { height: 34px; }
+  .te-color-wrap { width: 34px; height: 34px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

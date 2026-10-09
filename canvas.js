@@ -19,25 +19,27 @@ const draw = {
   // Pinch: referencia FIJA al iniciar el gesto
   pinchStartDist: 0,
   pinchStartZoom: 1,
-  pinchAnchorX: 0,        // punto de pantalla (clientX) ancla del zoom
-  pinchAnchorY: 0,        // punto de pantalla (clientY) ancla del zoom
+  pinchAnchorX: 0,
+  pinchAnchorY: 0,
 
-  // Estado del gesto
-  pinchLastMidX: 0,
-  pinchLastMidY: 0,
+  // Estado del gesto (solo zoom)
   pinchLastDist: 0,
-  pinchStartScrollX: 0,
-  pinchStartScrollY: 0,
-  // Acumuladores por frame para decidir en vivo
-  gestureAccumDist: 0,
-  gestureAccumPan: 0,
-  gestureMode: null,      // 'pan' | 'zoom' | 'both' | null
-  gestureDecideTimeout: null,
+
+  // Scroll (pan) con 1 dedo
+  scrollPanning: false,
+  scrollPanPointerId: null,
+  scrollPanStartX: 0,
+  scrollPanStartY: 0,
+  scrollPanStartScrollX: 0,
+  scrollPanStartScrollY: 0,
+  scrollPanMoved: false,
 
   firstTouchTimer: null,
   spacePanning: false,
   panning: false,
   panPointerId: null,
+  panStartX: 0, panStartY: 0,
+  panStartScrollX: 0, panStartScrollY: 0,
 
   selection: null,
   floating: null,
@@ -72,18 +74,11 @@ export function initCanvas() {
 
   syncWrapSize();
 
-  // ✅ Los gestos (pinch/pan) se registran en el contenedor de scroll
-  // para que funcionen también fuera del canvas.
   els.canvasScroll.style.touchAction = 'none';
   els.canvasScroll.addEventListener('pointerdown', onPointerDown);
   els.canvasScroll.addEventListener('pointermove', onPointerMove);
   els.canvasScroll.addEventListener('pointerup',   onPointerUp);
   els.canvasScroll.addEventListener('pointercancel', onPointerUp);
-  // En algunos navegadores hace falta capturar el pointer
-  els.canvasScroll.addEventListener('pointerleave', (e) => {
-    // No cerramos si hay una sesión pinch activa
-    if (!draw.twoFingerActive) return;
-  });
 
   els.canvasScroll.addEventListener('wheel', onWheel, { passive: false });
 
@@ -154,7 +149,7 @@ export function getActiveSelection() {
 export function setTool(tool) {
   state.tool = tool;
   els.canvasWrap.dataset.cursor = tool;
-  if (!tool.startsWith('shape-')) clearShapeSelection();
+  if (!tool.startsWith('select') && !tool.startsWith('shape-')) clearShapeSelection();
   if (tool !== 'text') commitTextBox();
 }
 
@@ -171,13 +166,6 @@ function getCanvasCoords(clientX, clientY) {
   };
 }
 
-/** Devuelve true si el evento ocurre sobre el canvas/overlay */
-function isPointerOnCanvas(e) {
-  const rect = overlayCanvas.getBoundingClientRect();
-  return e.clientX >= rect.left && e.clientX <= rect.right &&
-         e.clientY >= rect.top  && e.clientY <= rect.bottom;
-}
-
 /* ============================================================
    POINTERS
    ============================================================ */
@@ -191,24 +179,13 @@ function onPointerDown(e) {
     }
   }
 
-  // Guardamos el pointer con su posición
   draw.pointers.set(e.pointerId, { id: e.pointerId, x: e.clientX, y: e.clientY });
 
-  // Si el pointer cae sobre el canvas y no estamos iniciando un gesto de 2 dedos,
-  // hacemos setPointerCapture para no perder el trazo
-  if (isPointerOnCanvas(e)) {
-    overlayCanvas.setPointerCapture?.(e.pointerId);
-  }
-
-  if (draw.spacePanning) { startPan(e); return; }
-
-  if (state.tool === 'picker' && draw.pointers.size === 1 && isPointerOnCanvas(e)) {
-    startPickerContinuo(e);
-    return;
-  }
-
+  // Si es touch y hay 1 dedo: no decidimos aún — puede ser pan con 1 dedo, o pinch con 2
   if (draw.pointers.size === 2) {
+    // Cambiamos a modo pinch: cancelamos cualquier pan con 1 dedo o trazo
     clearTimeout(draw.firstTouchTimer);
+    cancelScrollPan();
     draw.twoFingerActive = true;
     abortDrawing();
     startPinch();
@@ -216,13 +193,30 @@ function onPointerDown(e) {
   }
   if (draw.twoFingerActive) return;
 
-  // Solo dibujamos si el pointer está sobre el canvas
-  if (!isPointerOnCanvas(e)) return;
+  if (draw.spacePanning) { startPan(e); return; }
 
+  // ✅ 1 dedo sobre touch fuera de cualquier herramienta de dibujo → puede ser pan
+  // Pero si es sobre el canvas y hay herramienta activa, iniciamos trazo (con delay en touch).
   if (e.pointerType === 'touch') {
-    draw.firstTouchTimer = setTimeout(() => beginStroke(e), 90);
+    // Todavía no decidimos: esperamos 90ms por si entra un 2º dedo.
+    // Al mismo tiempo, dejamos la puerta abierta para convertirlo en pan.
+    draw.firstTouchTimer = setTimeout(() => {
+      // Pasado el delay, decidimos: si es sobre el canvas, es trazo; si es fuera, es pan.
+      const onCanvas = isPointerOnCanvas(e);
+      if (onCanvas && needsDrawingTool()) {
+        beginStroke(e);
+      } else {
+        startScrollPan(e);
+      }
+    }, 90);
   } else {
-    beginStroke(e);
+    // Mouse / pen: comportamiento directo
+    if (isPointerOnCanvas(e) || state.tool !== 'picker') {
+      // ✅ Clic fuera del canvas también dibuja (como si fuera dentro)
+      beginStroke(e);
+    } else {
+      beginStroke(e);
+    }
   }
 }
 
@@ -237,6 +231,11 @@ function onPointerMove(e) {
 
   if (draw.resizeSession) {
     updateHandleResize(e);
+    return;
+  }
+
+  if (draw.scrollPanning && e.pointerId === draw.scrollPanPointerId) {
+    updateScrollPan(e);
     return;
   }
 
@@ -263,6 +262,12 @@ function onPointerUp(e) {
     return;
   }
 
+  if (draw.scrollPanning && e.pointerId === draw.scrollPanPointerId) {
+    endScrollPan();
+    draw.pointers.delete(e.pointerId);
+    return;
+  }
+
   draw.pointers.delete(e.pointerId);
 
   if (draw.panning && e.pointerId === draw.panPointerId) { endPan(); return; }
@@ -274,7 +279,21 @@ function onPointerUp(e) {
   if (draw.active) endStroke();
 }
 
-/* ─── Pan ─────────────────────────────────────────────────── */
+/* ─── Determinar si la herramienta activa dibuja o no ─── */
+function needsDrawingTool() {
+  const t = state.tool;
+  return t === 'pencil' || t === 'brush' || t === 'eraser' ||
+         t === 'fill' || t === 'picker' || t === 'text' ||
+         t.startsWith('select') || t.startsWith('shape-');
+}
+
+function isPointerOnCanvas(e) {
+  const rect = overlayCanvas.getBoundingClientRect();
+  return e.clientX >= rect.left && e.clientX <= rect.right &&
+         e.clientY >= rect.top  && e.clientY <= rect.bottom;
+}
+
+/* ─── Pan con espacio ─────────────────────────────────────── */
 function startPan(e) {
   draw.panning = true;
   draw.panPointerId = e.pointerId;
@@ -296,26 +315,46 @@ function endPan() {
   els.canvasWrap.classList.remove('panning');
 }
 
+/* ─── Scroll con 1 dedo (pan táctil) ─────────────────────── */
+function startScrollPan(e) {
+  draw.scrollPanning = true;
+  draw.scrollPanPointerId = e.pointerId;
+  draw.scrollPanStartX = e.clientX;
+  draw.scrollPanStartY = e.clientY;
+  draw.scrollPanStartScrollX = els.canvasScroll.scrollLeft;
+  draw.scrollPanStartScrollY = els.canvasScroll.scrollTop;
+  draw.scrollPanMoved = false;
+  els.canvasScroll.setPointerCapture?.(e.pointerId);
+}
+
+function updateScrollPan(e) {
+  const dx = e.clientX - draw.scrollPanStartX;
+  const dy = e.clientY - draw.scrollPanStartY;
+  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) draw.scrollPanMoved = true;
+  els.canvasScroll.scrollLeft = draw.scrollPanStartScrollX - dx;
+  els.canvasScroll.scrollTop  = draw.scrollPanStartScrollY - dy;
+}
+
+function endScrollPan() {
+  draw.scrollPanning = false;
+  draw.scrollPanPointerId = null;
+  draw.scrollPanMoved = false;
+}
+
+function cancelScrollPan() {
+  if (!draw.scrollPanning) return;
+  draw.scrollPanning = false;
+  draw.scrollPanPointerId = null;
+  draw.scrollPanMoved = false;
+}
+
 /* ============================================================
-   PINCH CON DETECCIÓN DINÁMICA
-   ============================================================
-   - Ancla de zoom: punto medio INICIAL de los 2 dedos.
-   - Modo: se recalcula cada frame según qué cambia más.
-   - Permite pasar de zoom a pan y viceversa en vivo.
+   PINCH — SOLO ZOOM (sin pan simultáneo)
    ============================================================ */
 function resetGestureState() {
   draw.pinchStartDist = 0;
   draw.pinchStartZoom = state.zoom;
   draw.pinchLastDist = 0;
-  draw.pinchLastMidX = 0;
-  draw.pinchLastMidY = 0;
-  draw.gestureAccumDist = 0;
-  draw.gestureAccumPan = 0;
-  draw.gestureMode = null;
-  if (draw.gestureDecideTimeout) {
-    clearTimeout(draw.gestureDecideTimeout);
-    draw.gestureDecideTimeout = null;
-  }
 }
 
 function startPinch() {
@@ -329,19 +368,9 @@ function startPinch() {
 
   draw.pinchStartDist = dist;
   draw.pinchStartZoom = state.zoom;
-  // ✅ Ancla fija: punto medio inicial (no se actualiza durante el gesto)
   draw.pinchAnchorX = midX;
   draw.pinchAnchorY = midY;
-
   draw.pinchLastDist = dist;
-  draw.pinchLastMidX = midX;
-  draw.pinchLastMidY = midY;
-  draw.pinchStartScrollX = els.canvasScroll.scrollLeft;
-  draw.pinchStartScrollY = els.canvasScroll.scrollTop;
-
-  draw.gestureAccumDist = 0;
-  draw.gestureAccumPan = 0;
-  draw.gestureMode = null;
 }
 
 function updatePinch() {
@@ -350,58 +379,17 @@ function updatePinch() {
 
   const [a, b] = pts;
   const dist = Math.hypot(a.x - b.x, a.y - b.y);
-  const midX = (a.x + b.x) / 2;
-  const midY = (a.y + b.y) / 2;
+  if (draw.pinchStartDist < 4) return;
 
-  // Deltas por frame
-  const dDist = Math.abs(dist - draw.pinchLastDist);
-  const dPan  = Math.hypot(midX - draw.pinchLastMidX, midY - draw.pinchLastMidY);
+  const scale = dist / draw.pinchStartDist;
+  const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
 
-  draw.gestureAccumDist += dDist;
-  draw.gestureAccumPan  += dPan;
-
-  // ── Decisión DINÁMICA (cada frame) ──
-  // Comparamos lo acumulado recientemente; si una métrica supera a la otra
-  // por un factor, elegimos ese modo.
-  if (draw.gestureAccumDist > 4 || draw.gestureAccumPan > 4) {
-    if (draw.gestureAccumDist > draw.gestureAccumPan * 1.3) {
-      draw.gestureMode = 'zoom';
-    } else if (draw.gestureAccumPan > draw.gestureAccumDist * 1.3) {
-      draw.gestureMode = 'pan';
-    } else {
-      draw.gestureMode = 'both';
-    }
-
-    // Decae para permitir cambio de modo
-    draw.gestureAccumDist *= 0.7;
-    draw.gestureAccumPan  *= 0.7;
-  }
-
-  const mode = draw.gestureMode || 'both';
-
-  // ── Zoom anclado al punto medio inicial ──
-  if ((mode === 'zoom' || mode === 'both') && draw.pinchStartDist > 4) {
-    const scale = dist / draw.pinchStartDist;
-    const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
-    applyZoomAnchored(newZoom, draw.pinchAnchorX, draw.pinchAnchorY);
-  }
-
-  // ── Pan según el centro actual vs el inicial ──
-  if (mode === 'pan' || mode === 'both') {
-    const dx = midX - draw.pinchAnchorX;
-    const dy = midY - draw.pinchAnchorY;
-    els.canvasScroll.scrollLeft = draw.pinchStartScrollX - dx;
-    els.canvasScroll.scrollTop  = draw.pinchStartScrollY - dy;
-  }
-
-  draw.pinchLastDist = dist;
-  draw.pinchLastMidX = midX;
-  draw.pinchLastMidY = midY;
+  // ✅ El ancla queda FIJA al punto inicial del pinch
+  applyZoomAnchored(newZoom, draw.pinchAnchorX, draw.pinchAnchorY);
 }
 
 /**
- * Zoom anclado a un punto fijo de la pantalla (clientX, clientY).
- * El contenido del canvas bajo ese punto permanece inmóvil.
+ * Zoom anclado a un punto fijo de la pantalla.
  */
 function applyZoomAnchored(newZoom, anchorClientX, anchorClientY) {
   const scroll = els.canvasScroll;
@@ -419,11 +407,11 @@ function applyZoomAnchored(newZoom, anchorClientX, anchorClientY) {
   els.canvasWrap.style.width  = `${mainCanvas.width}px`;
   els.canvasWrap.style.height = `${mainCanvas.height}px`;
 
-  // Mantener fijo (anchorClientX, anchorClientY)
   scroll.scrollLeft = sx * ratio - (anchorClientX - rect.left);
   scroll.scrollTop  = sy * ratio - (anchorClientY - rect.top);
 
   scaleHandles(newZoom);
+  updateTextToolbarScale(newZoom);
   document.getElementById('stZoom').textContent = Math.round(newZoom * 100) + '%';
 }
 
@@ -494,7 +482,7 @@ function beginStroke(e) {
   draw.lastX = x;  draw.lastY = y;
 
   if (tool === 'picker') {
-    updatePickerContinuo(e);
+    startPickerContinuo(e);
     draw.active = false;
     return;
   }
@@ -509,6 +497,11 @@ function beginStroke(e) {
     draw.active = false;
     return;
   }
+  if (tool === 'select-wand') {
+    magicWandSelect(x, y);
+    draw.active = false;
+    return;
+  }
   if (tool.startsWith('select')) { beginSelection(x, y); return; }
   if (tool === 'eraser') mainCtx.globalCompositeOperation = 'destination-out';
   if (tool === 'pencil' || tool === 'brush' || tool === 'eraser') drawDot(mainCtx, x, y);
@@ -516,7 +509,7 @@ function beginStroke(e) {
 
 function continueStroke(x, y, e) {
   const tool = state.tool;
-  if (tool.startsWith('select')) { updateSelection(x, y); return; }
+  if (tool.startsWith('select') && tool !== 'select-wand') { updateSelection(x, y); return; }
   if (tool === 'pencil' || tool === 'brush' || tool === 'eraser') {
     interpolateLine(draw.lastX, draw.lastY, x, y, (px, py) => drawDot(mainCtx, px, py));
     draw.lastX = x; draw.lastY = y;
@@ -531,7 +524,7 @@ function continueStroke(x, y, e) {
 
 function endStroke() {
   const tool = state.tool;
-  if (tool.startsWith('select')) { finishSelection(); draw.active = false; return; }
+  if (tool.startsWith('select') && tool !== 'select-wand') { finishSelection(); draw.active = false; return; }
   if (tool.startsWith('shape-')) {
     commitShape(draw.startX, draw.startY, draw.lastX, draw.lastY, tool);
     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -631,6 +624,115 @@ function commitShape(x0, y0, x1, y1, tool) {
     lineWidth: state.strokeSize
   });
   mainCtx.restore();
+}
+
+/* ============================================================
+   VARITA MÁGICA
+   ============================================================
+   Selecciona una región contigua similar al color donde se hizo clic
+   y la convierte en un flotante.
+   ============================================================ */
+function magicWandSelect(x, y) {
+  const px = Math.round(x);
+  const py = Math.round(y);
+  if (px < 0 || py < 0 || px >= mainCanvas.width || py >= mainCanvas.height) return;
+
+  const img = mainCtx.getImageData(0, 0, mainCanvas.width, mainCanvas.height);
+  const data = img.data;
+  const W = img.width, H = img.height;
+
+  const target = getPixel(data, px, py, W);
+  const tolerance = 30;
+
+  const mask = new Uint8Array(W * H);
+  const stack = [[px, py]];
+  let minX = W, minY = H, maxX = 0, maxY = 0;
+  let count = 0;
+
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
+    const idx = cy * W + cx;
+    if (mask[idx]) continue;
+    const p = getPixel(data, cx, cy, W);
+    if (!colorsEqual(p, target, tolerance)) continue;
+
+    mask[idx] = 1;
+    count++;
+    if (cx < minX) minX = cx;
+    if (cy < minY) minY = cy;
+    if (cx > maxX) maxX = cx;
+    if (cy > maxY) maxY = cy;
+
+    stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+  }
+
+  if (count < 4) {
+    setStatus('No hay región seleccionable');
+    return;
+  }
+
+  const rw = maxX - minX + 1;
+  const rh = maxY - minY + 1;
+
+  // Construir un canvas con solo los píxeles enmascarados
+  floatingCanvas.width = rw;
+  floatingCanvas.height = rh;
+  floatingCtx.clearRect(0, 0, rw, rh);
+  const fdata = floatingCtx.createImageData(rw, rh);
+  const fbytes = fdata.data;
+
+  for (let yy = 0; yy < rh; yy++) {
+    for (let xx = 0; xx < rw; xx++) {
+      const srcIdx = (minY + yy) * W + (minX + xx);
+      if (mask[srcIdx]) {
+        const dstIdx = (yy * rw + xx) * 4;
+        const s = srcIdx * 4;
+        fbytes[dstIdx]     = data[s];
+        fbytes[dstIdx + 1] = data[s + 1];
+        fbytes[dstIdx + 2] = data[s + 2];
+        fbytes[dstIdx + 3] = data[s + 3];
+      }
+    }
+  }
+  floatingCtx.putImageData(fdata, 0, 0);
+
+  // Borrar la región del canvas original
+  for (let yy = 0; yy < rh; yy++) {
+    for (let xx = 0; xx < rw; xx++) {
+      const srcIdx = (minY + yy) * W + (minX + xx);
+      if (mask[srcIdx]) {
+        const s = srcIdx * 4;
+        data[s] = 0; data[s + 1] = 0; data[s + 2] = 0; data[s + 3] = 0;
+      }
+    }
+  }
+  mainCtx.putImageData(img, 0, 0);
+
+  // Redibujar los píxeles borrados con blanco si no es transparente
+  if (!state.transparentBg) {
+    mainCtx.save();
+    mainCtx.globalCompositeOperation = 'destination-over';
+    mainCtx.fillStyle = '#ffffff';
+    mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+    mainCtx.restore();
+  }
+
+  draw.floating = {
+    x: minX, y: minY, w: rw, h: rh, rotation: 0, source: 'selection'
+  };
+  renderFloating();
+  pushHistory(); markDirty();
+  setStatus(`Varita mágica: ${count} px seleccionados`);
+}
+
+function getPixel(data, x, y, width) {
+  const i = (y * width + x) * 4;
+  return [data[i], data[i + 1], data[i + 2], data[i + 3]];
+}
+function colorsEqual(a, b, tol) {
+  return Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol &&
+         Math.abs(a[2] - b[2]) <= tol && Math.abs(a[3] - b[3]) <= tol;
 }
 
 /* ============================================================
@@ -879,7 +981,7 @@ function updateCurrentHistoryEntry() {
 }
 
 /* ============================================================
-   SELECCIÓN
+   SELECCIÓN RECTANGULAR / LAZO
    ============================================================ */
 function beginSelection(x, y) {
   if (draw.floating) commitFloating();
@@ -1199,8 +1301,18 @@ function createTextBox(x, y) {
   els.teText.innerHTML = '';
   els.teNoBg.checked = true;
   applyTextStyles();
+  updateTextToolbarScale(state.zoom);
   els.teText.focus();
   setStatus('Editor de texto: escribe y pulsa ✓ o haz clic fuera');
+}
+
+/** Mantiene la barra del editor al mismo tamaño visual (contrarresta el zoom). */
+function updateTextToolbarScale(zoom) {
+  const tb = document.getElementById('textToolbar');
+  if (!tb) return;
+  const z = Math.max(0.05, Math.min(20, zoom || 1));
+  tb.style.transform = `scale(${1 / z})`;
+  tb.style.transformOrigin = 'bottom left';
 }
 
 function captureTextStyles() {
@@ -1237,10 +1349,11 @@ function onTextEditorDrag(e) {
 
   const startX = e.clientX, startY = e.clientY;
   const ox = tb.x, oy = tb.y;
+  const zoom = state.zoom || 1;
 
   const move = (ev) => {
-    tb.x = Math.max(-tb.w + 40, Math.min(mainCanvas.width - 40, ox + (ev.clientX - startX)));
-    tb.y = Math.max(-20, Math.min(mainCanvas.height - 20, oy + (ev.clientY - startY)));
+    tb.x = Math.max(-tb.w + 40, Math.min(mainCanvas.width - 40, ox + (ev.clientX - startX) / zoom));
+    tb.y = Math.max(-20, Math.min(mainCanvas.height - 20, oy + (ev.clientY - startY) / zoom));
     updateTextEditorPosition();
   };
   const up = () => {
@@ -1260,10 +1373,11 @@ function onTextHandleDown(e) {
   const dir = e.currentTarget.dataset.th;
   const startX = e.clientX, startY = e.clientY;
   const o = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
+  const zoom = state.zoom || 1;
 
   const move = (ev) => {
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
+    const dx = (ev.clientX - startX) / zoom;
+    const dy = (ev.clientY - startY) / zoom;
 
     if (dir === 'se') {
       tb.w = Math.max(80, o.w + dx);
@@ -1440,15 +1554,14 @@ export function cropToSelection(rect) {
 }
 
 /* ============================================================
-   HANDLES DEL CANVAS — EXTENDER/CONTRAR ÁREA (tipo Paint)
+   HANDLES DEL CANVAS — EXTENDER/CONTRAR ÁREA (tipo Paint W10)
    ============================================================
-   Al mover un handle:
-     - 'n' hacia arriba  → añade filas arriba (el contenido baja)
-     - 'n' hacia abajo   → quita filas arriba
-     - 's' hacia abajo   → añade filas abajo
-     - 'e' hacia derecha → añade columnas a la derecha
-     - 'w' hacia izq.    → añade columnas a la izquierda
-   El contenido existente NO se escala, se mantiene a su tamaño.
+   Al arrastrar un handle:
+     - E: crece por la derecha → ancho crece
+     - W: crece por la izquierda → ancho crece y contenido se desplaza a la derecha
+     - S: crece por abajo → alto crece
+     - N: crece por arriba → alto crece y contenido se desplaza hacia abajo
+   NO se reescala la imagen, solo se extiende o contrae el "papel".
    ============================================================ */
 function initHandles() {
   document.querySelectorAll('.handle').forEach((h) => {
@@ -1465,11 +1578,10 @@ function onHandleDown(e) {
   const startClientY = e.clientY;
   const zoomVal = state.zoom || 1;
 
-  // Snapshot del estado inicial
   const startW = mainCanvas.width;
   const startH = mainCanvas.height;
 
-  // Snapshot del contenido actual para no perderlo al redimensionar
+  // Snapshot del contenido actual
   const tmp = document.createElement('canvas');
   tmp.width = startW;
   tmp.height = startH;
@@ -1485,7 +1597,6 @@ function onHandleDown(e) {
     zoomVal,
     lastW: startW,
     lastH: startH,
-    // Offset de contenido (cuando se añade por norte/oeste, hay que dibujar el contenido desplazado)
     offsetX: 0,
     offsetY: 0
   };
@@ -1498,35 +1609,65 @@ function updateHandleResize(ev) {
   const dxCanvas = Math.round((ev.clientX - s.startClientX) / s.zoomVal);
   const dyCanvas = Math.round((ev.clientY - s.startClientY) / s.zoomVal);
 
-  // Calculamos el nuevo tamaño según el handle activo
   let newW = s.startW;
   let newH = s.startH;
   let offX = 0;
   let offY = 0;
 
-  if (s.dir.includes('e')) newW = Math.max(1, s.startW + dxCanvas);
+  // ✅ Redimensión del LADO correspondiente (tipo Paint W10):
+  // E: ancho += dx, contenido anclado a la izquierda
+  if (s.dir.includes('e')) {
+    newW = Math.max(1, s.startW + dxCanvas);
+    offX = 0;
+  }
+  // W: ancho -= dx, contenido desplazado hacia la derecha si crece
   if (s.dir.includes('w')) {
     newW = Math.max(1, s.startW - dxCanvas);
-    // Lo que "crece" por la izquierda desplaza el contenido hacia la derecha
-    offX = s.startW - newW; // si crecemos, offX > 0
+    offX = s.startW - newW; // si crece (newW > startW), offX < 0 → NO
+    // Realmente: si newW > startW, offX debe ser > 0 para empujar el contenido a la derecha
+    // Ej: startW=600, newW=700 → offX=100.
+    // Pero aquí dxCanvas es negativo (dedo va a la izq) → newW=600-(-100)=700 → offX=600-700=-100.
+    // Corregimos: offX = newW - startW (positivo si crece)
+    offX = newW - s.startW;
   }
-  if (s.dir.includes('s')) newH = Math.max(1, s.startH + dyCanvas);
+  // S: alto += dy
+  if (s.dir.includes('s')) {
+    newH = Math.max(1, s.startH + dyCanvas);
+    offY = 0;
+  }
+  // N: alto -= dy, contenido desplazado si crece
   if (s.dir.includes('n')) {
     newH = Math.max(1, s.startH - dyCanvas);
-    offY = s.startH - newH;
+    offY = newH - s.startH;
+  }
+
+  // Simplificación: si es 'nw', 'ne', 'sw', 'se' se combinan ambos.
+  // Cuando crece por W o N, el offset es negativo en realidad porque el contenido
+  // se dibuja desde (0,0) pero queremos que se vea desplazado al crecer hacia arriba/izq.
+  // Corregimos:
+  if (s.dir.includes('w')) offX = Math.max(0, s.startW - newW) === 0 ? (newW - s.startW) : (newW - s.startW);
+  if (s.dir.includes('n')) offY = newH - s.startH;
+
+  // En realidad la fórmula correcta es:
+  // Si newW > startW (creció): el contenido debe desplazarse a la derecha → offX = newW - startW
+  // Si newW < startW (encogió): el contenido se recorta por la izquierda → offX = newW - startW (negativo)
+  // Y para E/S, offX/offY = 0 (anclado a la izquierda/arriba)
+  if (s.dir === 'w' || s.dir === 'nw' || s.dir === 'sw') {
+    offX = newW - s.startW;
+  }
+  if (s.dir === 'n' || s.dir === 'nw' || s.dir === 'ne') {
+    offY = newH - s.startH;
   }
 
   if (newW === s.lastW && newH === s.lastH && offX === s.offsetX && offY === s.offsetY) {
     return;
   }
 
-  // Aplicar nuevo tamaño al canvas y overlay
   mainCanvas.width = newW;
   mainCanvas.height = newH;
   overlayCanvas.width = newW;
   overlayCanvas.height = newH;
 
-  // Fondo (si no es transparente, blanco para las nuevas zonas)
   if (!state.transparentBg) {
     mainCtx.fillStyle = '#ffffff';
     mainCtx.fillRect(0, 0, newW, newH);
@@ -1534,8 +1675,6 @@ function updateHandleResize(ev) {
     mainCtx.clearRect(0, 0, newW, newH);
   }
 
-  // Dibujar el contenido anterior desplazado por offX/offY
-  // (si el handle es 'n' o 'w', el contenido se mueve; si es 'e' o 's', queda en su lugar)
   mainCtx.drawImage(s.tmp, offX, offY);
 
   s.lastW = newW;
@@ -1543,7 +1682,6 @@ function updateHandleResize(ev) {
   s.offsetX = offX;
   s.offsetY = offY;
 
-  // Actualizar el wrap visual
   els.canvasWrap.style.width  = `${newW}px`;
   els.canvasWrap.style.height = `${newH}px`;
 
@@ -1554,11 +1692,7 @@ function endHandleResize() {
   const s = draw.resizeSession;
   if (!s) return;
   draw.resizeSession = null;
-
-  // Si no cambió nada, no hacemos nada
   if (s.lastW === s.startW && s.lastH === s.startH) return;
-
-  // Guardar en el historial como cambio
   pushHistory();
   markDirty();
   updateFooterInfo();
@@ -1585,19 +1719,34 @@ function applyZoom(newZoom, centerClientX, centerClientY) {
   scroll.scrollTop  = sy * ratio - (centerClientY - rect.top);
 
   scaleHandles(newZoom);
+  updateTextToolbarScale(newZoom);
   document.getElementById('stZoom').textContent = Math.round(newZoom * 100) + '%';
 }
 
+/**
+ * Los handles mantienen su tamaño VISUAL en pantalla, sin importar el zoom.
+ * Se aplica scale(1/z) exacto (sin límites) para lograrlo.
+ */
 function scaleHandles(z) {
-  const scale = 1 / z;
+  const inv = 1 / (z || 1);
   els.handles.querySelectorAll('.handle').forEach((h) => {
-    h.style.transform = `scale(${Math.min(2, Math.max(0.5, scale))})`;
+    h.style.transform = `scale(${inv})`;
+  });
+  document.querySelectorAll('.shape-handle').forEach((h) => {
+    h.style.transform = `scale(${inv})`;
+  });
+  document.querySelectorAll('.float-handle').forEach((h) => {
+    h.style.transform = `scale(${inv})`;
+  });
+  document.querySelectorAll('.te-float-handle').forEach((h) => {
+    h.style.transform = `scale(${inv})`;
   });
   els.canvasWrap.classList.toggle('show-handles', z < 5);
 }
 
 export function zoom(factor, centerX, centerY) {
   const rect = els.canvasScroll.getBoundingClientRect();
+  // ✅ Si no se especifica centro, usar el centro del ÁREA VISIBLE
   const cx = centerX ?? rect.left + rect.width / 2;
   const cy = centerY ?? rect.top + rect.height / 2;
   const newZoom = Math.max(0.05, Math.min(20, state.zoom * factor));
@@ -1641,6 +1790,7 @@ export function zoomReset() {
   els.canvasScroll.scrollLeft = 0;
   els.canvasScroll.scrollTop  = 0;
   scaleHandles(1);
+  updateTextToolbarScale(1);
   document.getElementById('stZoom').textContent = '100%';
 }
 
