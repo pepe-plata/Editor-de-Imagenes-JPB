@@ -161,6 +161,7 @@ body {
   transition: background var(--transition), color var(--transition), border-color var(--transition), transform 80ms ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  flex-shrink: 0;
 }
 .icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: var(--border); }
 .icon-btn:active:not(:disabled) { transform: scale(.94); }
@@ -244,12 +245,19 @@ body {
   flex-shrink: 0;
 }
 
+/* ✅ Botón color: mismo tamaño que los demás, cuadrado siempre */
 .tb-btn-color {
   position: relative;
-  width: auto;
-  padding: 0 18px 0 8px;
-  border-radius: 999px;
-  gap: 4px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .color-btn-swatch {
   display: block;
@@ -261,7 +269,7 @@ body {
 }
 .tb-btn-color .tb-caret {
   position: absolute;
-  right: 6px; bottom: 10px;
+  right: 3px; bottom: 3px;
   width: 0; height: 0;
   border-left: 3px solid transparent;
   border-right: 3px solid transparent;
@@ -456,7 +464,7 @@ body {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ÁREA DEL CANVAS — FIX de barra residual
+   ÁREA DEL CANVAS
    ════════════════════════════════════════════════════════════ */
 .canvas-area {
   position: fixed;
@@ -464,7 +472,6 @@ body {
   bottom: calc(var(--footer-h) + env(safe-area-inset-bottom, 0));
   left: 0; right: 0;
   overflow: hidden;
-  /* Fondo sólido, sin bordes residuales que creen franjas */
   background: var(--workspace-bg);
   border: 0;
   box-shadow: none;
@@ -476,7 +483,6 @@ body {
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: none;
-  /* Sin fondo propio para no generar banda visible */
   background: transparent;
   border: 0;
   margin: 0;
@@ -492,8 +498,6 @@ body {
   width: max-content;
   box-sizing: border-box;
   background: transparent;
-  border: 0;
-  margin: 0;
 }
 .canvas-wrap {
   position: relative;
@@ -667,7 +671,6 @@ body {
   position: absolute;
   top: -44px;
   left: 0;
-  /* La barra ahora es más ancha y puede desplazarse */
   min-width: 100%;
   display: flex;
   align-items: center;
@@ -685,7 +688,6 @@ body {
 }
 .text-editor-toolbar::-webkit-scrollbar { display: none; }
 
-/* Asa de arrastre dedicada — punteada y clara para identificarla */
 .te-drag-handle {
   flex-shrink: 0;
   width: 24px;
@@ -778,11 +780,10 @@ body {
   flex-shrink: 0;
 }
 
-/* ✅ Cuadro de texto CON FONDO TRANSPARENTE por defecto */
 .te-text {
   min-height: 60px;
   padding: 8px 10px;
-  background: transparent;      /* Fondo transparente por defecto */
+  background: transparent;
   border: 1.5px dashed var(--primary);
   border-radius: 6px;
   color: #000;
@@ -1057,15 +1058,24 @@ kbd {
 
 /* ─── Responsive ───────────────────────────────────────────── */
 @media (max-width: 720px) {
-  .file-name-input { max-width: 120px; font-size: 13px; }
+  .file-name-input { max-width: 110px; font-size: 13px; }
   .toolbar {
     top: calc(var(--header-h) + env(safe-area-inset-top, 0) + 6px);
     padding: 4px 6px;
     gap: 1px;
   }
   .tb-btn { width: 32px; height: 32px; font-size: 16px; }
-  .tb-btn-color { padding: 0 16px 0 6px; }
+  /* ✅ En móvil, forzar tamaño cuadrado también para el botón color */
+  .tb-btn-color {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
   .color-btn-swatch { width: 20px; height: 20px; }
+  .tb-btn-color .tb-caret { right: 1px; bottom: 1px; }
+  .icon-btn { width: 32px; height: 32px; }
   .brush-slider { left: 8px; padding: 10px 6px; }
   .brush-slider input[type="range"] { height: 140px; }
   .help-list.two-col { grid-template-columns: 1fr; }

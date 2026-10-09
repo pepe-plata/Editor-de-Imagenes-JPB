@@ -47,9 +47,7 @@
 
 <body>
 
-<!-- ════════════════════════════════════════════════════════════
-     SPLASH (2 s)
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ SPLASH ═══════════ -->
 <div id="splash" class="splash" aria-hidden="true">
   <div class="splash-inner">
     <img src="icons/icon-512.png" alt="" class="splash-icon" onerror="this.style.display='none'" />
@@ -59,9 +57,7 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     HEADER
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ HEADER ═══════════ -->
 <header id="appHeader" class="app-header" role="banner">
   <input
     id="fileNameInput"
@@ -82,6 +78,13 @@
       <img src="icons/save.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'💾'}))" />
     </button>
     <div class="header-sep"></div>
+    <button id="btnUndo" class="icon-btn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
+      <img src="icons/undo.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↶'}))" />
+    </button>
+    <button id="btnRedo" class="icon-btn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>
+      <img src="icons/redo.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↷'}))" />
+    </button>
+    <div class="header-sep"></div>
     <button id="btnTheme" class="icon-btn" title="Tema claro/oscuro" aria-label="Cambiar tema">
       <img src="icons/night.png" alt="" class="ico ico-theme-dark" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🌙'}))" />
       <img src="icons/sun.png" alt="" class="ico ico-theme-light" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'☀️'}))" />
@@ -92,19 +95,8 @@
   </div>
 </header>
 
-<!-- ════════════════════════════════════════════════════════════
-     BARRA FLOTANTE
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ BARRA FLOTANTE ═══════════ -->
 <div id="toolbar" class="toolbar" role="toolbar" aria-label="Herramientas">
-
-  <button id="btnUndo" class="tb-btn" data-action="undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
-    <img src="icons/undo.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↶'}))" />
-  </button>
-  <button id="btnRedo" class="tb-btn" data-action="redo" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>
-    <img src="icons/redo.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↷'}))" />
-  </button>
-
-  <div class="tb-sep"></div>
 
   <button class="tb-btn"
           data-tool="select-rect"
@@ -175,9 +167,7 @@
 
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     MENÚS FLOTANTES
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ MENÚS FLOTANTES ═══════════ -->
 <div id="menuSelect" class="tool-menu" hidden>
   <button class="tool-menu-item" data-tool="select-rect">
     <img src="icons/select.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⬚'}))" />
@@ -285,9 +275,7 @@
   </button>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     DIÁLOGO DE COLOR
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ DIÁLOGO DE COLOR ═══════════ -->
 <div id="colorMenu" class="color-menu" hidden>
   <div class="color-menu-head">
     <span>Color</span>
@@ -317,9 +305,7 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     SLIDER VERTICAL
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ SLIDER VERTICAL ═══════════ -->
 <div id="brushSlider" class="brush-slider" hidden>
   <input
     id="brushSizeRange"
@@ -333,9 +319,7 @@
   <span id="brushSizeValue" class="brush-slider-value">4</span>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     ÁREA DEL CANVAS
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ ÁREA DEL CANVAS ═══════════ -->
 <main id="canvasArea" class="canvas-area" aria-label="Área de trabajo">
   <div id="canvasScroll" class="canvas-scroll">
     <div id="canvasCenter" class="canvas-center">
@@ -381,15 +365,12 @@
           </div>
         </div>
 
-        <!-- ═══════════ EDITOR DE TEXTO FLOTANTE ═══════════ -->
+        <!-- EDITOR DE TEXTO FLOTANTE -->
         <div id="textEditor" class="text-editor" hidden>
           <div class="text-editor-toolbar" id="textToolbar">
-
-            <!-- Asa de arrastre dedicada -->
             <div id="teDragHandle" class="te-drag-handle" title="Arrastrar para mover">
               <span></span><span></span><span></span>
             </div>
-
             <select id="teFont" class="te-select" title="Fuente">
               <option value="system-ui">Sistema</option>
               <option value="Arial, sans-serif">Arial</option>
@@ -399,17 +380,12 @@
               <option value="Verdana, sans-serif">Verdana</option>
               <option value="'Comic Sans MS', cursive">Comic Sans</option>
             </select>
-
             <input id="teSize" type="number" min="8" max="400" value="32" class="te-num" title="Tamaño" />
-
             <span class="te-sep"></span>
-
             <button class="te-btn" id="teBold" title="Negrita"><b>B</b></button>
             <button class="te-btn" id="teItalic" title="Cursiva"><i>I</i></button>
             <button class="te-btn" id="teUnderline" title="Subrayado"><u>U</u></button>
-
             <span class="te-sep"></span>
-
             <label class="te-color-wrap" title="Color de texto">
               <span class="te-color-label">A</span>
               <input id="teColor" type="color" value="#000000" class="te-color" />
@@ -422,15 +398,11 @@
               <input id="teNoBg" type="checkbox" checked />
               <span>Sin fondo</span>
             </label>
-
             <button class="te-btn" id="teEmoji" title="Insertar emoji">😀</button>
-
             <span class="te-sep"></span>
-
             <button class="te-btn te-btn-ok" id="teOk" title="Aplicar">✓</button>
             <button class="te-btn te-btn-cancel" id="teCancel" title="Cancelar">✕</button>
           </div>
-
           <div id="teText" class="te-text" contenteditable="true" spellcheck="false"></div>
           <div class="te-float-handle" data-th="nw"></div>
           <div class="te-float-handle" data-th="ne"></div>
@@ -445,9 +417,7 @@
   <textarea id="textInput" class="text-input-hidden" spellcheck="false"></textarea>
 </main>
 
-<!-- ════════════════════════════════════════════════════════════
-     FOOTER
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ FOOTER ═══════════ -->
 <footer id="appFooter" class="app-footer" role="contentinfo">
   <span class="status-item" id="stDim">0 × 0 px</span>
   <span class="status-sep">•</span>
@@ -458,9 +428,7 @@
   <span class="status-item status-msg" id="stMsg">Listo</span>
 </footer>
 
-<!-- ════════════════════════════════════════════════════════════
-     MODAL: EMOJI PICKER
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ MODAL: EMOJI PICKER ═══════════ -->
 <div id="emojiPicker" class="modal" hidden>
   <div class="modal-backdrop" data-close></div>
   <div class="modal-card modal-card-lg" role="dialog" aria-modal="true">
@@ -480,14 +448,12 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     MODAL: GUARDAR
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ MODAL: GUARDAR ═══════════ -->
 <div id="modalSave" class="modal" hidden>
   <div class="modal-backdrop" data-close></div>
-  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalSaveTitle">
+  <div class="modal-card" role="dialog" aria-modal="true">
     <div class="modal-header">
-      <h2 id="modalSaveTitle">Guardar imagen</h2>
+      <h2>Guardar imagen</h2>
       <button class="icon-btn" data-close title="Cerrar">
         <img src="icons/cancel.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'✕'}))" />
       </button>
@@ -531,9 +497,7 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     MODAL: REDIMENSIONAR
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ MODAL: REDIMENSIONAR ═══════════ -->
 <div id="modalResize" class="modal" hidden>
   <div class="modal-backdrop" data-close></div>
   <div class="modal-card" role="dialog" aria-modal="true">
@@ -576,9 +540,7 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     MODAL: NUEVO LIENZO
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ MODAL: NUEVO LIENZO ═══════════ -->
 <div id="modalNew" class="modal" hidden>
   <div class="modal-backdrop" data-close></div>
   <div class="modal-card modal-card-lg" role="dialog" aria-modal="true">
@@ -622,9 +584,7 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     MODAL: AYUDA
-     ════════════════════════════════════════════════════════════ -->
+<!-- ═══════════ MODAL: AYUDA ═══════════ -->
 <div id="modalHelp" class="modal" hidden>
   <div class="modal-backdrop" data-close></div>
   <div class="modal-card modal-card-lg" role="dialog" aria-modal="true">
@@ -645,11 +605,10 @@
       <div class="tab-panel active" data-panel="android">
         <ul class="help-list">
           <li><b>1 dedo</b> — dibuja.</li>
-          <li><b>2 dedos</b> — pinch zoom + pan.</li>
+          <li><b>2 dedos paralelos</b> — pan (scroll).</li>
+          <li><b>2 dedos separándose</b> — zoom desde el punto medio.</li>
           <li><b>Doble toque</b> — alterna 100 % / ajustar.</li>
           <li><b>Long press 500 ms</b> sobre botones con submenú → muestra opciones.</li>
-          <li><b>Selección flotante</b>: arrastra para mover, usa handles para redim/rotar.</li>
-          <li><b>Editor de texto</b>: usa el asa ⋮⋮ para arrastrar el cuadro.</li>
         </ul>
       </div>
       <div class="tab-panel" data-panel="windows">
@@ -660,7 +619,6 @@
           <li><b>Shift + rueda</b> — scroll horizontal.</li>
           <li><b>Alt + rueda</b> — scroll vertical.</li>
           <li><b>Clic sostenido 500 ms</b> sobre botones con submenú → muestra opciones.</li>
-          <li><b>Esc</b> — fija la selección flotante o cierra el editor de texto.</li>
         </ul>
       </div>
       <div class="tab-panel" data-panel="shortcuts">
@@ -682,7 +640,6 @@
           <li><kbd>F</kbd> — Relleno</li>
           <li><kbd>T</kbd> — Texto</li>
           <li><kbd>I</kbd> — Cuentagotas</li>
-          <li><kbd>Esc</kbd> — Fijar / cancelar</li>
         </ul>
       </div>
       <div class="tab-panel" data-panel="general">

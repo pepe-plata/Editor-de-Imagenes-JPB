@@ -15,10 +15,25 @@ const draw = {
   lastX: 0, lastY: 0,
   pointers: new Map(),
   twoFingerActive: false,
+
+  // Pinch: estado inicial
   pinchStartDist: 0,
   pinchStartZoom: 1,
-  panStartX: 0, panStartY: 0,
-  panStartScrollX: 0, panStartScrollY: 0,
+  pinchStartMidX: 0,
+  pinchStartMidY: 0,
+  pinchStartScrollX: 0,
+  pinchStartScrollY: 0,
+
+  // Detección de intención del gesto
+  pinchLastDist: 0,
+  pinchLastMidX: 0,
+  pinchLastMidY: 0,
+  // Acumuladores para decidir si es pan puro, zoom puro o mixto
+  gestureAccumDist: 0,   // cambio absoluto acumulado de distancia entre dedos
+  gestureAccumPan: 0,    // cambio absoluto acumulado del centro de los dedos
+  gestureDecided: false, // ya decidimos qué hacer en este gesto
+  gestureMode: null,     // 'pan' | 'zoom' | 'both'
+
   firstTouchTimer: null,
   spacePanning: false,
   panning: false,
@@ -27,7 +42,11 @@ const draw = {
   selection: null,
   floating: null,
   lastShape: null,
-  textBox: null
+  textBox: null,
+
+  // Cuentagotas continuo
+  pickerActive: false,
+  pickerPointerId: null
 };
 
 /* ============================================================
@@ -162,6 +181,12 @@ function onPointerDown(e) {
 
   if (draw.spacePanning) { startPan(e); return; }
 
+  // ✅ Cuentagotas: modo continuo
+  if (state.tool === 'picker' && draw.pointers.size === 1) {
+    startPickerContinuo(e);
+    return;
+  }
+
   if (draw.pointers.size === 2) {
     clearTimeout(draw.firstTouchTimer);
     draw.twoFingerActive = true;
@@ -182,6 +207,12 @@ function onPointerMove(e) {
   const rec = draw.pointers.get(e.pointerId);
   if (rec) { rec.x = e.clientX; rec.y = e.clientY; }
 
+  // Cuentagotas continuo
+  if (draw.pickerActive && e.pointerId === draw.pickerPointerId) {
+    updatePickerContinuo(e);
+    return;
+  }
+
   if (draw.panning && e.pointerId === draw.panPointerId) { updatePan(e); return; }
   if (draw.twoFingerActive && draw.pointers.size >= 2) { updatePinch(); return; }
   if (!draw.active) return;
@@ -192,10 +223,22 @@ function onPointerMove(e) {
 
 function onPointerUp(e) {
   clearTimeout(draw.firstTouchTimer);
+
+  // Cuentagotas continuo
+  if (draw.pickerActive && e.pointerId === draw.pickerPointerId) {
+    endPickerContinuo();
+    draw.pointers.delete(e.pointerId);
+    return;
+  }
+
   draw.pointers.delete(e.pointerId);
 
   if (draw.panning && e.pointerId === draw.panPointerId) { endPan(); return; }
-  if (draw.twoFingerActive && draw.pointers.size < 2) { draw.twoFingerActive = false; return; }
+  if (draw.twoFingerActive && draw.pointers.size < 2) {
+    draw.twoFingerActive = false;
+    resetGestureState();
+    return;
+  }
   if (draw.active) endStroke();
 }
 
@@ -221,31 +264,170 @@ function endPan() {
   els.canvasWrap.classList.remove('panning');
 }
 
-/* ─── Pinch ───────────────────────────────────────────────── */
+/* ============================================================
+   PINCH CON GESTOS INTELIGENTES
+   ============================================================
+   - Distancia entre dedos: si CAMBIA → zoom
+   - Centro de dedos: si SE MUEVE → pan
+   - Durante los primeros ~150 ms o ~10 px decidimos la intención.
+     * Si solo cambia distancia → zoom
+     * Si solo cambia centro → pan
+     * Si ambos → combinado
+   ============================================================ */
+function resetGestureState() {
+  draw.pinchStartDist = 0;
+  draw.pinchStartZoom = state.zoom;
+  draw.pinchLastDist = 0;
+  draw.pinchLastMidX = 0;
+  draw.pinchLastMidY = 0;
+  draw.gestureAccumDist = 0;
+  draw.gestureAccumPan = 0;
+  draw.gestureDecided = false;
+  draw.gestureMode = null;
+}
+
 function startPinch() {
   const pts = [...draw.pointers.values()];
   if (pts.length < 2) return;
-  const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+
+  const [a, b] = pts;
+  const dist = Math.hypot(a.x - b.x, a.y - b.y);
+  const midX = (a.x + b.x) / 2;
+  const midY = (a.y + b.y) / 2;
+
   draw.pinchStartDist = dist;
   draw.pinchStartZoom = state.zoom;
-  draw.panStartX = (pts[0].x + pts[1].x) / 2;
-  draw.panStartY = (pts[0].y + pts[1].y) / 2;
-  draw.panStartScrollX = els.canvasScroll.scrollLeft;
-  draw.panStartScrollY = els.canvasScroll.scrollTop;
+  draw.pinchStartMidX = midX;
+  draw.pinchStartMidY = midY;
+  draw.pinchLastDist = dist;
+  draw.pinchLastMidX = midX;
+  draw.pinchLastMidY = midY;
+  draw.pinchStartScrollX = els.canvasScroll.scrollLeft;
+  draw.pinchStartScrollY = els.canvasScroll.scrollTop;
+
+  draw.gestureAccumDist = 0;
+  draw.gestureAccumPan = 0;
+  draw.gestureDecided = false;
+  draw.gestureMode = null;
 }
+
 function updatePinch() {
   const pts = [...draw.pointers.values()];
   if (pts.length < 2) return;
-  const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-  const cx = (pts[0].x + pts[1].x) / 2;
-  const cy = (pts[0].y + pts[1].y) / 2;
-  const scale = dist / draw.pinchStartDist;
-  const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
-  applyZoom(newZoom, cx, cy);
-  const dx = cx - draw.panStartX;
-  const dy = cy - draw.panStartY;
-  els.canvasScroll.scrollLeft = draw.panStartScrollX - dx;
-  els.canvasScroll.scrollTop  = draw.panStartScrollY - dy;
+
+  const [a, b] = pts;
+  const dist = Math.hypot(a.x - b.x, a.y - b.y);
+  const midX = (a.x + b.x) / 2;
+  const midY = (a.y + b.y) / 2;
+
+  // Deltas desde el frame anterior
+  const dDist = Math.abs(dist - draw.pinchLastDist);
+  const dPan  = Math.hypot(midX - draw.pinchLastMidX, midY - draw.pinchLastMidY);
+
+  draw.gestureAccumDist += dDist;
+  draw.gestureAccumPan  += dPan;
+
+  // ── Decidir la intención del gesto (una sola vez por gesto) ──
+  if (!draw.gestureDecided) {
+    const THRESHOLD = 8; // px
+    if (draw.gestureAccumDist > THRESHOLD || draw.gestureAccumPan > THRESHOLD) {
+      draw.gestureDecided = true;
+      if (draw.gestureAccumDist > draw.gestureAccumPan * 1.5) {
+        draw.gestureMode = 'zoom';
+      } else if (draw.gestureAccumPan > draw.gestureAccumDist * 1.5) {
+        draw.gestureMode = 'pan';
+      } else {
+        draw.gestureMode = 'both';
+      }
+    }
+  }
+
+  const mode = draw.gestureMode || 'both'; // hasta decidir, aplicamos ambos por seguridad
+
+  // ── Aplicar zoom ──
+  if (mode === 'zoom' || mode === 'both') {
+    const scale = dist / draw.pinchStartDist;
+    // Si la distancia inicial es muy pequeña, evitamos saltos
+    if (draw.pinchStartDist > 4) {
+      const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
+      applyZoomFromPinch(newZoom, midX, midY);
+    }
+  }
+
+  // ── Aplicar pan ──
+  if (mode === 'pan' || mode === 'both') {
+    const dx = midX - draw.pinchStartMidX;
+    const dy = midY - draw.pinchStartMidY;
+    els.canvasScroll.scrollLeft = draw.pinchStartScrollX - dx;
+    els.canvasScroll.scrollTop  = draw.pinchStartScrollY - dy;
+  }
+
+  // Guardar para el siguiente frame
+  draw.pinchLastDist = dist;
+  draw.pinchLastMidX = midX;
+  draw.pinchLastMidY = midY;
+}
+
+/**
+ * Zoom centrado en el punto medio de los dedos.
+ * Mantiene fijo (midX, midY) en pantalla mientras cambia el zoom.
+ */
+function applyZoomFromPinch(newZoom, midClientX, midClientY) {
+  const scroll = els.canvasScroll;
+  const rect = scroll.getBoundingClientRect();
+
+  // Punto del contenido (canvas) bajo el centro de los dedos
+  const sx = (midClientX - rect.left) + scroll.scrollLeft;
+  const sy = (midClientY - rect.top)  + scroll.scrollTop;
+
+  const oldZoom = state.zoom;
+  const ratio = newZoom / oldZoom;
+  state.zoom = newZoom;
+
+  els.canvasWrap.style.transformOrigin = '0 0';
+  els.canvasWrap.style.transform = `scale(${newZoom})`;
+  els.canvasWrap.style.width  = `${mainCanvas.width}px`;
+  els.canvasWrap.style.height = `${mainCanvas.height}px`;
+
+  // Reposicionar scroll para que el punto bajo los dedos permanezca fijo
+  scroll.scrollLeft = sx * ratio - (midClientX - rect.left);
+  scroll.scrollTop  = sy * ratio - (midClientY - rect.top);
+
+  scaleHandles(newZoom);
+  document.getElementById('stZoom').textContent = Math.round(newZoom * 100) + '%';
+}
+
+/* ============================================================
+   CUENTAGOTAS CONTINUO
+   ============================================================ */
+function startPickerContinuo(e) {
+  draw.pickerActive = true;
+  draw.pickerPointerId = e.pointerId;
+  overlayCanvas.setPointerCapture?.(e.pointerId);
+  updatePickerContinuo(e);
+}
+
+function updatePickerContinuo(e) {
+  const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+  const px = Math.round(x);
+  const py = Math.round(y);
+  if (px < 0 || py < 0 || px >= mainCanvas.width || py >= mainCanvas.height) return;
+
+  const color = pickColor(mainCtx, px, py);
+  if (color) {
+    state.primary = color;
+    const input = document.getElementById('colorPrimary');
+    const swatch = document.getElementById('colorBtnSwatch');
+    if (input) input.value = color;
+    if (swatch) swatch.style.background = color;
+    setStatus(`Color: ${color}`);
+  }
+}
+
+function endPickerContinuo() {
+  draw.pickerActive = false;
+  draw.pickerPointerId = null;
+  setStatus(`Color elegido: ${state.primary}`);
 }
 
 /* ============================================================
@@ -282,15 +464,7 @@ function beginStroke(e) {
   draw.lastX = x;  draw.lastY = y;
 
   if (tool === 'picker') {
-    const color = pickColor(mainCtx, Math.round(x), Math.round(y));
-    if (color) {
-      state.primary = color;
-      const input = document.getElementById('colorPrimary');
-      const swatch = document.getElementById('colorBtnSwatch');
-      if (input) input.value = color;
-      if (swatch) swatch.style.background = color;
-      setStatus(`Color elegido: ${color}`);
-    }
+    updatePickerContinuo(e);
     draw.active = false;
     return;
   }
@@ -955,7 +1129,6 @@ function initTextEditor() {
     h.addEventListener('pointerdown', onTextHandleDown);
   });
 
-  // ✅ Asa de arrastre dedicada (más confiable que arrastrar toda la barra)
   const drag = document.getElementById('teDragHandle');
   if (drag) {
     drag.addEventListener('pointerdown', (e) => {
@@ -965,12 +1138,9 @@ function initTextEditor() {
     });
   }
 
-  // También permitimos arrastrar desde la barra en zonas vacías (por si el asa no está visible)
   const toolbar = document.getElementById('textToolbar');
   toolbar.addEventListener('pointerdown', (e) => {
-    // Ignoramos clicks en controles interactivos
     if (e.target.closest('button, input, select, label')) return;
-    // Ignoramos si es el propio asa (ya lo maneja su propio listener)
     if (e.target.closest('#teDragHandle')) return;
     onTextEditorDrag(e);
   });
@@ -1000,7 +1170,6 @@ function createTextBox(x, y) {
   editor.style.transform = '';
 
   els.teText.innerHTML = '';
-  // ✅ Fondo transparente por defecto
   els.teNoBg.checked = true;
   applyTextStyles();
   els.teText.focus();
@@ -1029,7 +1198,6 @@ function applyTextStyles() {
   t.style.fontStyle  = s.italic ? 'italic' : 'normal';
   t.style.textDecoration = s.underline ? 'underline' : 'none';
   t.style.color = s.color;
-  // ✅ Fondo transparente cuando "Sin fondo" está activo
   t.style.background = s.background ? s.background : 'transparent';
   if (draw.textBox) draw.textBox.styles = s;
 }
