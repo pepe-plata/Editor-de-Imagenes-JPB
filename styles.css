@@ -245,7 +245,6 @@ body {
   flex-shrink: 0;
 }
 
-/* ✅ Botón color: mismo tamaño que los demás, cuadrado siempre */
 .tb-btn-color {
   position: relative;
   width: 36px;
@@ -482,6 +481,8 @@ body {
   position: absolute; inset: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  /* ✅ Ahora los gestos se capturan a nivel de todo el área del canvas,
+     no solo sobre los canvas element. */
   touch-action: none;
   background: transparent;
   border: 0;
@@ -523,7 +524,7 @@ body {
 .overlay-canvas {
   position: absolute;
   top: 0; left: 0;
-  pointer-events: none;
+  pointer-events: auto;
   display: block;
 }
 
@@ -535,7 +536,7 @@ body {
 }
 .handle {
   position: absolute;
-  width: 12px; height: 12px;
+  width: 14px; height: 14px;
   background: var(--primary);
   border: 2px solid #fff;
   border-radius: 3px;
@@ -544,16 +545,17 @@ body {
   transform-origin: center;
   opacity: 0;
   transition: opacity 160ms ease;
+  z-index: 3;
 }
 .canvas-wrap.show-handles .handle { opacity: 1; }
-.handle[data-handle="nw"] { top: -6px; left: -6px;                 cursor: nwse-resize; }
-.handle[data-handle="n"]  { top: -6px; left: calc(50% - 6px);      cursor: ns-resize;   }
-.handle[data-handle="ne"] { top: -6px; right: -6px;                cursor: nesw-resize; }
-.handle[data-handle="e"]  { top: calc(50% - 6px); right: -6px;     cursor: ew-resize;   }
-.handle[data-handle="se"] { bottom: -6px; right: -6px;             cursor: nwse-resize; }
-.handle[data-handle="s"]  { bottom: -6px; left: calc(50% - 6px);   cursor: ns-resize;   }
-.handle[data-handle="sw"] { bottom: -6px; left: -6px;              cursor: nesw-resize; }
-.handle[data-handle="w"]  { top: calc(50% - 6px); left: -6px;      cursor: ew-resize;   }
+.handle[data-handle="nw"] { top: -7px; left: -7px;                 cursor: nwse-resize; }
+.handle[data-handle="n"]  { top: -7px; left: calc(50% - 7px);      cursor: ns-resize;   }
+.handle[data-handle="ne"] { top: -7px; right: -7px;                cursor: nesw-resize; }
+.handle[data-handle="e"]  { top: calc(50% - 7px); right: -7px;     cursor: ew-resize;   }
+.handle[data-handle="se"] { bottom: -7px; right: -7px;             cursor: nwse-resize; }
+.handle[data-handle="s"]  { bottom: -7px; left: calc(50% - 7px);   cursor: ns-resize;   }
+.handle[data-handle="sw"] { bottom: -7px; left: -7px;              cursor: nesw-resize; }
+.handle[data-handle="w"]  { top: calc(50% - 7px); left: -7px;      cursor: ew-resize;   }
 
 /* ─── Handles de figura ───────────────────────────────────── */
 .shape-handles {
@@ -1058,14 +1060,13 @@ kbd {
 
 /* ─── Responsive ───────────────────────────────────────────── */
 @media (max-width: 720px) {
-  .file-name-input { max-width: 110px; font-size: 13px; }
+  .file-name-input { max-width: 90px; font-size: 13px; }
   .toolbar {
     top: calc(var(--header-h) + env(safe-area-inset-top, 0) + 6px);
     padding: 4px 6px;
     gap: 1px;
   }
   .tb-btn { width: 32px; height: 32px; font-size: 16px; }
-  /* ✅ En móvil, forzar tamaño cuadrado también para el botón color */
   .tb-btn-color {
     width: 32px;
     height: 32px;

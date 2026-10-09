@@ -86,6 +86,8 @@ export const els = {
   btnSave:        document.getElementById('btnSave'),
   btnUndo:        document.getElementById('btnUndo'),
   btnRedo:        document.getElementById('btnRedo'),
+  btnCopy:        document.getElementById('btnCopy'),
+  btnPaste:       document.getElementById('btnPaste'),
   btnTheme:       document.getElementById('btnTheme'),
   btnHelp:        document.getElementById('btnHelp'),
   toolbar:        document.getElementById('toolbar'),
@@ -455,6 +457,8 @@ function handleToolbarAction(action) {
     case 'crop':        handleCrop(); break;
     case 'copy':        copySelection(); break;
     case 'paste':       pasteFromClipboard(); break;
+    case 'zoom-in':     zoom(1.25); setStatus(`Zoom ${Math.round(state.zoom*100)}%`); break;
+    case 'zoom-out':    zoom(0.8);  setStatus(`Zoom ${Math.round(state.zoom*100)}%`); break;
     case 'zoom-fit':    zoomFit(); setStatus('Ajustado a pantalla'); break;
     case 'undo':        undo(); break;
     case 'redo':        redo(); break;
@@ -965,6 +969,8 @@ async function init() {
   els.btnSave.addEventListener('click', () => { buildSaveModal(); openModal(els.modalSave); });
   els.btnUndo.addEventListener('click', undo);
   els.btnRedo.addEventListener('click', redo);
+  els.btnCopy.addEventListener('click', copySelection);
+  els.btnPaste.addEventListener('click', pasteFromClipboard);
   els.btnTheme.addEventListener('click', toggleTheme);
   els.btnHelp.addEventListener('click', () => openModal(els.modalHelp));
 

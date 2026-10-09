@@ -85,6 +85,13 @@
       <img src="icons/redo.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'↷'}))" />
     </button>
     <div class="header-sep"></div>
+    <button id="btnCopy" class="icon-btn" title="Copiar (Ctrl+C)" aria-label="Copiar">
+      <img src="icons/copy.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⧉'}))" />
+    </button>
+    <button id="btnPaste" class="icon-btn" title="Pegar (Ctrl+V)" aria-label="Pegar">
+      <img src="icons/paste.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'📋'}))" />
+    </button>
+    <div class="header-sep"></div>
     <button id="btnTheme" class="icon-btn" title="Tema claro/oscuro" aria-label="Cambiar tema">
       <img src="icons/night.png" alt="" class="ico ico-theme-dark" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🌙'}))" />
       <img src="icons/sun.png" alt="" class="ico ico-theme-light" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'☀️'}))" />
@@ -146,19 +153,19 @@
 
   <div class="tb-sep"></div>
 
-  <button class="tb-btn" data-action="copy" title="Copiar (Ctrl+C)" aria-label="Copiar">
-    <img src="icons/copy.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'⧉'}))" />
-  </button>
-
-  <button class="tb-btn" data-action="paste" title="Pegar (Ctrl+V)" aria-label="Pegar">
-    <img src="icons/paste.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'📋'}))" />
+  <button class="tb-btn tb-btn-color" data-action="color" title="Color" aria-label="Color">
+    <span id="colorBtnSwatch" class="color-btn-swatch"></span>
+    <span class="tb-caret"></span>
   </button>
 
   <div class="tb-sep"></div>
 
-  <button class="tb-btn tb-btn-color" data-action="color" title="Color" aria-label="Color">
-    <span id="colorBtnSwatch" class="color-btn-swatch"></span>
-    <span class="tb-caret"></span>
+  <button class="tb-btn" data-action="zoom-out" title="Alejar (−)" aria-label="Alejar">
+    <img src="icons/zoomout.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'➖'}))" />
+  </button>
+
+  <button class="tb-btn" data-action="zoom-in" title="Acercar (+)" aria-label="Acercar">
+    <img src="icons/zoomin.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'➕'}))" />
   </button>
 
   <button class="tb-btn" data-action="zoom-fit" title="Ajustar a pantalla (0)" aria-label="Ajustar">
@@ -606,7 +613,7 @@
         <ul class="help-list">
           <li><b>1 dedo</b> — dibuja.</li>
           <li><b>2 dedos paralelos</b> — pan (scroll).</li>
-          <li><b>2 dedos separándose</b> — zoom desde el punto medio.</li>
+          <li><b>2 dedos separándose</b> — zoom desde el centro de los dedos.</li>
           <li><b>Doble toque</b> — alterna 100 % / ajustar.</li>
           <li><b>Long press 500 ms</b> sobre botones con submenú → muestra opciones.</li>
         </ul>

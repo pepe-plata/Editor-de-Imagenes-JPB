@@ -16,23 +16,23 @@ const draw = {
   pointers: new Map(),
   twoFingerActive: false,
 
-  // Pinch: estado inicial
+  // Pinch: referencia FIJA al iniciar el gesto
   pinchStartDist: 0,
   pinchStartZoom: 1,
-  pinchStartMidX: 0,
-  pinchStartMidY: 0,
-  pinchStartScrollX: 0,
-  pinchStartScrollY: 0,
+  pinchAnchorX: 0,        // punto de pantalla (clientX) ancla del zoom
+  pinchAnchorY: 0,        // punto de pantalla (clientY) ancla del zoom
 
-  // Detección de intención del gesto
-  pinchLastDist: 0,
+  // Estado del gesto
   pinchLastMidX: 0,
   pinchLastMidY: 0,
-  // Acumuladores para decidir si es pan puro, zoom puro o mixto
-  gestureAccumDist: 0,   // cambio absoluto acumulado de distancia entre dedos
-  gestureAccumPan: 0,    // cambio absoluto acumulado del centro de los dedos
-  gestureDecided: false, // ya decidimos qué hacer en este gesto
-  gestureMode: null,     // 'pan' | 'zoom' | 'both'
+  pinchLastDist: 0,
+  pinchStartScrollX: 0,
+  pinchStartScrollY: 0,
+  // Acumuladores por frame para decidir en vivo
+  gestureAccumDist: 0,
+  gestureAccumPan: 0,
+  gestureMode: null,      // 'pan' | 'zoom' | 'both' | null
+  gestureDecideTimeout: null,
 
   firstTouchTimer: null,
   spacePanning: false,
@@ -44,9 +44,11 @@ const draw = {
   lastShape: null,
   textBox: null,
 
-  // Cuentagotas continuo
   pickerActive: false,
-  pickerPointerId: null
+  pickerPointerId: null,
+
+  // Redimensión por handles (extender área tipo Paint)
+  resizeSession: null
 };
 
 /* ============================================================
@@ -70,12 +72,18 @@ export function initCanvas() {
 
   syncWrapSize();
 
-  overlayCanvas.style.pointerEvents = 'auto';
-  overlayCanvas.style.touchAction = 'none';
-  overlayCanvas.addEventListener('pointerdown', onPointerDown);
-  overlayCanvas.addEventListener('pointermove', onPointerMove);
-  overlayCanvas.addEventListener('pointerup',   onPointerUp);
-  overlayCanvas.addEventListener('pointercancel', onPointerUp);
+  // ✅ Los gestos (pinch/pan) se registran en el contenedor de scroll
+  // para que funcionen también fuera del canvas.
+  els.canvasScroll.style.touchAction = 'none';
+  els.canvasScroll.addEventListener('pointerdown', onPointerDown);
+  els.canvasScroll.addEventListener('pointermove', onPointerMove);
+  els.canvasScroll.addEventListener('pointerup',   onPointerUp);
+  els.canvasScroll.addEventListener('pointercancel', onPointerUp);
+  // En algunos navegadores hace falta capturar el pointer
+  els.canvasScroll.addEventListener('pointerleave', (e) => {
+    // No cerramos si hay una sesión pinch activa
+    if (!draw.twoFingerActive) return;
+  });
 
   els.canvasScroll.addEventListener('wheel', onWheel, { passive: false });
 
@@ -163,6 +171,13 @@ function getCanvasCoords(clientX, clientY) {
   };
 }
 
+/** Devuelve true si el evento ocurre sobre el canvas/overlay */
+function isPointerOnCanvas(e) {
+  const rect = overlayCanvas.getBoundingClientRect();
+  return e.clientX >= rect.left && e.clientX <= rect.right &&
+         e.clientY >= rect.top  && e.clientY <= rect.bottom;
+}
+
 /* ============================================================
    POINTERS
    ============================================================ */
@@ -176,13 +191,18 @@ function onPointerDown(e) {
     }
   }
 
-  overlayCanvas.setPointerCapture?.(e.pointerId);
+  // Guardamos el pointer con su posición
   draw.pointers.set(e.pointerId, { id: e.pointerId, x: e.clientX, y: e.clientY });
+
+  // Si el pointer cae sobre el canvas y no estamos iniciando un gesto de 2 dedos,
+  // hacemos setPointerCapture para no perder el trazo
+  if (isPointerOnCanvas(e)) {
+    overlayCanvas.setPointerCapture?.(e.pointerId);
+  }
 
   if (draw.spacePanning) { startPan(e); return; }
 
-  // ✅ Cuentagotas: modo continuo
-  if (state.tool === 'picker' && draw.pointers.size === 1) {
+  if (state.tool === 'picker' && draw.pointers.size === 1 && isPointerOnCanvas(e)) {
     startPickerContinuo(e);
     return;
   }
@@ -196,6 +216,9 @@ function onPointerDown(e) {
   }
   if (draw.twoFingerActive) return;
 
+  // Solo dibujamos si el pointer está sobre el canvas
+  if (!isPointerOnCanvas(e)) return;
+
   if (e.pointerType === 'touch') {
     draw.firstTouchTimer = setTimeout(() => beginStroke(e), 90);
   } else {
@@ -207,9 +230,13 @@ function onPointerMove(e) {
   const rec = draw.pointers.get(e.pointerId);
   if (rec) { rec.x = e.clientX; rec.y = e.clientY; }
 
-  // Cuentagotas continuo
   if (draw.pickerActive && e.pointerId === draw.pickerPointerId) {
     updatePickerContinuo(e);
+    return;
+  }
+
+  if (draw.resizeSession) {
+    updateHandleResize(e);
     return;
   }
 
@@ -224,9 +251,14 @@ function onPointerMove(e) {
 function onPointerUp(e) {
   clearTimeout(draw.firstTouchTimer);
 
-  // Cuentagotas continuo
   if (draw.pickerActive && e.pointerId === draw.pickerPointerId) {
     endPickerContinuo();
+    draw.pointers.delete(e.pointerId);
+    return;
+  }
+
+  if (draw.resizeSession) {
+    endHandleResize();
     draw.pointers.delete(e.pointerId);
     return;
   }
@@ -265,14 +297,11 @@ function endPan() {
 }
 
 /* ============================================================
-   PINCH CON GESTOS INTELIGENTES
+   PINCH CON DETECCIÓN DINÁMICA
    ============================================================
-   - Distancia entre dedos: si CAMBIA → zoom
-   - Centro de dedos: si SE MUEVE → pan
-   - Durante los primeros ~150 ms o ~10 px decidimos la intención.
-     * Si solo cambia distancia → zoom
-     * Si solo cambia centro → pan
-     * Si ambos → combinado
+   - Ancla de zoom: punto medio INICIAL de los 2 dedos.
+   - Modo: se recalcula cada frame según qué cambia más.
+   - Permite pasar de zoom a pan y viceversa en vivo.
    ============================================================ */
 function resetGestureState() {
   draw.pinchStartDist = 0;
@@ -282,8 +311,11 @@ function resetGestureState() {
   draw.pinchLastMidY = 0;
   draw.gestureAccumDist = 0;
   draw.gestureAccumPan = 0;
-  draw.gestureDecided = false;
   draw.gestureMode = null;
+  if (draw.gestureDecideTimeout) {
+    clearTimeout(draw.gestureDecideTimeout);
+    draw.gestureDecideTimeout = null;
+  }
 }
 
 function startPinch() {
@@ -297,8 +329,10 @@ function startPinch() {
 
   draw.pinchStartDist = dist;
   draw.pinchStartZoom = state.zoom;
-  draw.pinchStartMidX = midX;
-  draw.pinchStartMidY = midY;
+  // ✅ Ancla fija: punto medio inicial (no se actualiza durante el gesto)
+  draw.pinchAnchorX = midX;
+  draw.pinchAnchorY = midY;
+
   draw.pinchLastDist = dist;
   draw.pinchLastMidX = midX;
   draw.pinchLastMidY = midY;
@@ -307,7 +341,6 @@ function startPinch() {
 
   draw.gestureAccumDist = 0;
   draw.gestureAccumPan = 0;
-  draw.gestureDecided = false;
   draw.gestureMode = null;
 }
 
@@ -320,65 +353,62 @@ function updatePinch() {
   const midX = (a.x + b.x) / 2;
   const midY = (a.y + b.y) / 2;
 
-  // Deltas desde el frame anterior
+  // Deltas por frame
   const dDist = Math.abs(dist - draw.pinchLastDist);
   const dPan  = Math.hypot(midX - draw.pinchLastMidX, midY - draw.pinchLastMidY);
 
   draw.gestureAccumDist += dDist;
   draw.gestureAccumPan  += dPan;
 
-  // ── Decidir la intención del gesto (una sola vez por gesto) ──
-  if (!draw.gestureDecided) {
-    const THRESHOLD = 8; // px
-    if (draw.gestureAccumDist > THRESHOLD || draw.gestureAccumPan > THRESHOLD) {
-      draw.gestureDecided = true;
-      if (draw.gestureAccumDist > draw.gestureAccumPan * 1.5) {
-        draw.gestureMode = 'zoom';
-      } else if (draw.gestureAccumPan > draw.gestureAccumDist * 1.5) {
-        draw.gestureMode = 'pan';
-      } else {
-        draw.gestureMode = 'both';
-      }
+  // ── Decisión DINÁMICA (cada frame) ──
+  // Comparamos lo acumulado recientemente; si una métrica supera a la otra
+  // por un factor, elegimos ese modo.
+  if (draw.gestureAccumDist > 4 || draw.gestureAccumPan > 4) {
+    if (draw.gestureAccumDist > draw.gestureAccumPan * 1.3) {
+      draw.gestureMode = 'zoom';
+    } else if (draw.gestureAccumPan > draw.gestureAccumDist * 1.3) {
+      draw.gestureMode = 'pan';
+    } else {
+      draw.gestureMode = 'both';
     }
+
+    // Decae para permitir cambio de modo
+    draw.gestureAccumDist *= 0.7;
+    draw.gestureAccumPan  *= 0.7;
   }
 
-  const mode = draw.gestureMode || 'both'; // hasta decidir, aplicamos ambos por seguridad
+  const mode = draw.gestureMode || 'both';
 
-  // ── Aplicar zoom ──
-  if (mode === 'zoom' || mode === 'both') {
+  // ── Zoom anclado al punto medio inicial ──
+  if ((mode === 'zoom' || mode === 'both') && draw.pinchStartDist > 4) {
     const scale = dist / draw.pinchStartDist;
-    // Si la distancia inicial es muy pequeña, evitamos saltos
-    if (draw.pinchStartDist > 4) {
-      const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
-      applyZoomFromPinch(newZoom, midX, midY);
-    }
+    const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
+    applyZoomAnchored(newZoom, draw.pinchAnchorX, draw.pinchAnchorY);
   }
 
-  // ── Aplicar pan ──
+  // ── Pan según el centro actual vs el inicial ──
   if (mode === 'pan' || mode === 'both') {
-    const dx = midX - draw.pinchStartMidX;
-    const dy = midY - draw.pinchStartMidY;
+    const dx = midX - draw.pinchAnchorX;
+    const dy = midY - draw.pinchAnchorY;
     els.canvasScroll.scrollLeft = draw.pinchStartScrollX - dx;
     els.canvasScroll.scrollTop  = draw.pinchStartScrollY - dy;
   }
 
-  // Guardar para el siguiente frame
   draw.pinchLastDist = dist;
   draw.pinchLastMidX = midX;
   draw.pinchLastMidY = midY;
 }
 
 /**
- * Zoom centrado en el punto medio de los dedos.
- * Mantiene fijo (midX, midY) en pantalla mientras cambia el zoom.
+ * Zoom anclado a un punto fijo de la pantalla (clientX, clientY).
+ * El contenido del canvas bajo ese punto permanece inmóvil.
  */
-function applyZoomFromPinch(newZoom, midClientX, midClientY) {
+function applyZoomAnchored(newZoom, anchorClientX, anchorClientY) {
   const scroll = els.canvasScroll;
   const rect = scroll.getBoundingClientRect();
 
-  // Punto del contenido (canvas) bajo el centro de los dedos
-  const sx = (midClientX - rect.left) + scroll.scrollLeft;
-  const sy = (midClientY - rect.top)  + scroll.scrollTop;
+  const sx = (anchorClientX - rect.left) + scroll.scrollLeft;
+  const sy = (anchorClientY - rect.top)  + scroll.scrollTop;
 
   const oldZoom = state.zoom;
   const ratio = newZoom / oldZoom;
@@ -389,9 +419,9 @@ function applyZoomFromPinch(newZoom, midClientX, midClientY) {
   els.canvasWrap.style.width  = `${mainCanvas.width}px`;
   els.canvasWrap.style.height = `${mainCanvas.height}px`;
 
-  // Reposicionar scroll para que el punto bajo los dedos permanezca fijo
-  scroll.scrollLeft = sx * ratio - (midClientX - rect.left);
-  scroll.scrollTop  = sy * ratio - (midClientY - rect.top);
+  // Mantener fijo (anchorClientX, anchorClientY)
+  scroll.scrollLeft = sx * ratio - (anchorClientX - rect.left);
+  scroll.scrollTop  = sy * ratio - (anchorClientY - rect.top);
 
   scaleHandles(newZoom);
   document.getElementById('stZoom').textContent = Math.round(newZoom * 100) + '%';
@@ -637,10 +667,8 @@ function isPointInLastShape(x, y) {
 function startShapeDrag(e) {
   const sh = draw.lastShape;
   if (!sh) return;
-
   e.preventDefault();
   e.stopPropagation();
-
   const startClientX = e.clientX;
   const startClientY = e.clientY;
   const origX = sh.x;
@@ -676,7 +704,6 @@ function showShapeHandles(x0, y0, x1, y1, tool) {
   const rw = Math.abs(x1 - x0);
   const rh = Math.abs(y1 - y0);
   if (rw < 3 || rh < 3) return;
-
   const beforeSnapshot = getSnapshotBeforeCurrentShape();
   draw.lastShape = { x: rx, y: ry, w: rw, h: rh, rotation: 0, tool, beforeSnapshot };
   renderShapeHandles();
@@ -1413,7 +1440,15 @@ export function cropToSelection(rect) {
 }
 
 /* ============================================================
-   HANDLES DEL CANVAS
+   HANDLES DEL CANVAS — EXTENDER/CONTRAR ÁREA (tipo Paint)
+   ============================================================
+   Al mover un handle:
+     - 'n' hacia arriba  → añade filas arriba (el contenido baja)
+     - 'n' hacia abajo   → quita filas arriba
+     - 's' hacia abajo   → añade filas abajo
+     - 'e' hacia derecha → añade columnas a la derecha
+     - 'w' hacia izq.    → añade columnas a la izquierda
+   El contenido existente NO se escala, se mantiene a su tamaño.
    ============================================================ */
 function initHandles() {
   document.querySelectorAll('.handle').forEach((h) => {
@@ -1424,37 +1459,110 @@ function initHandles() {
 function onHandleDown(e) {
   e.stopPropagation();
   e.preventDefault();
-  const dir = e.currentTarget.dataset.handle;
-  const startX = e.clientX, startY = e.clientY;
-  const c = mainCanvas;
-  const startW = c.width, startH = c.height;
-  const zoomVal = state.zoom;
 
-  const move = (ev) => {
-    const dx = (ev.clientX - startX) / zoomVal;
-    const dy = (ev.clientY - startY) / zoomVal;
-    let nw = startW, nh = startH;
-    if (dir.includes('e')) nw = Math.max(8, startW + dx);
-    if (dir.includes('w')) nw = Math.max(8, startW - dx);
-    if (dir.includes('s')) nh = Math.max(8, startH + dy);
-    if (dir.includes('n')) nh = Math.max(8, startH - dy);
-    els.canvasWrap.style.width  = `${nw}px`;
-    els.canvasWrap.style.height = `${nh}px`;
+  const dir = e.currentTarget.dataset.handle;
+  const startClientX = e.clientX;
+  const startClientY = e.clientY;
+  const zoomVal = state.zoom || 1;
+
+  // Snapshot del estado inicial
+  const startW = mainCanvas.width;
+  const startH = mainCanvas.height;
+
+  // Snapshot del contenido actual para no perderlo al redimensionar
+  const tmp = document.createElement('canvas');
+  tmp.width = startW;
+  tmp.height = startH;
+  tmp.getContext('2d').drawImage(mainCanvas, 0, 0);
+
+  draw.resizeSession = {
+    dir,
+    startClientX,
+    startClientY,
+    startW,
+    startH,
+    tmp,
+    zoomVal,
+    lastW: startW,
+    lastH: startH,
+    // Offset de contenido (cuando se añade por norte/oeste, hay que dibujar el contenido desplazado)
+    offsetX: 0,
+    offsetY: 0
   };
-  const up = () => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', up);
-    const nw = parseFloat(els.canvasWrap.style.width)  || startW;
-    const nh = parseFloat(els.canvasWrap.style.height) || startH;
-    els.canvasWrap.style.width = ''; els.canvasWrap.style.height = '';
-    if (Math.round(nw) !== startW || Math.round(nh) !== startH) {
-      doResize(Math.round(nw), Math.round(nh));
-      pushHistory(); markDirty();
-      setStatus(`Redimensionado a ${Math.round(nw)} × ${Math.round(nh)} px`);
-    }
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up);
+}
+
+function updateHandleResize(ev) {
+  const s = draw.resizeSession;
+  if (!s) return;
+
+  const dxCanvas = Math.round((ev.clientX - s.startClientX) / s.zoomVal);
+  const dyCanvas = Math.round((ev.clientY - s.startClientY) / s.zoomVal);
+
+  // Calculamos el nuevo tamaño según el handle activo
+  let newW = s.startW;
+  let newH = s.startH;
+  let offX = 0;
+  let offY = 0;
+
+  if (s.dir.includes('e')) newW = Math.max(1, s.startW + dxCanvas);
+  if (s.dir.includes('w')) {
+    newW = Math.max(1, s.startW - dxCanvas);
+    // Lo que "crece" por la izquierda desplaza el contenido hacia la derecha
+    offX = s.startW - newW; // si crecemos, offX > 0
+  }
+  if (s.dir.includes('s')) newH = Math.max(1, s.startH + dyCanvas);
+  if (s.dir.includes('n')) {
+    newH = Math.max(1, s.startH - dyCanvas);
+    offY = s.startH - newH;
+  }
+
+  if (newW === s.lastW && newH === s.lastH && offX === s.offsetX && offY === s.offsetY) {
+    return;
+  }
+
+  // Aplicar nuevo tamaño al canvas y overlay
+  mainCanvas.width = newW;
+  mainCanvas.height = newH;
+  overlayCanvas.width = newW;
+  overlayCanvas.height = newH;
+
+  // Fondo (si no es transparente, blanco para las nuevas zonas)
+  if (!state.transparentBg) {
+    mainCtx.fillStyle = '#ffffff';
+    mainCtx.fillRect(0, 0, newW, newH);
+  } else {
+    mainCtx.clearRect(0, 0, newW, newH);
+  }
+
+  // Dibujar el contenido anterior desplazado por offX/offY
+  // (si el handle es 'n' o 'w', el contenido se mueve; si es 'e' o 's', queda en su lugar)
+  mainCtx.drawImage(s.tmp, offX, offY);
+
+  s.lastW = newW;
+  s.lastH = newH;
+  s.offsetX = offX;
+  s.offsetY = offY;
+
+  // Actualizar el wrap visual
+  els.canvasWrap.style.width  = `${newW}px`;
+  els.canvasWrap.style.height = `${newH}px`;
+
+  updateFooterInfo();
+}
+
+function endHandleResize() {
+  const s = draw.resizeSession;
+  if (!s) return;
+  draw.resizeSession = null;
+
+  // Si no cambió nada, no hacemos nada
+  if (s.lastW === s.startW && s.lastH === s.startH) return;
+
+  // Guardar en el historial como cambio
+  pushHistory();
+  markDirty();
+  updateFooterInfo();
+  setStatus(`Área del lienzo: ${s.lastW} × ${s.lastH} px`);
 }
 
 /* ============================================================
