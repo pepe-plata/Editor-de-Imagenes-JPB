@@ -19,15 +19,10 @@ export function setSecondaryColor(color) {
 
 export function addPaletteColor(color) {
   if (!/^#[0-9a-f]{6}$/i.test(color)) return;
-  if (state.palette.includes(color)) return;
-  state.palette.unshift(color);
-  if (state.palette.length > 40) state.palette.pop();
   renderPalette();
 }
 
-export function renderPalette() {
-  // (No hay paleta lateral en el rediseño; mantenemos la función por compatibilidad)
-}
+export function renderPalette() {}
 
 /* ─── Cuentagotas ──────────────────────────────────────────── */
 export function pickColor(ctx, x, y) {
@@ -40,7 +35,7 @@ export function pickColor(ctx, x, y) {
   } catch (e) { return null; }
 }
 
-/* ─── Flood fill ───────────────────────────────────────────── */
+/* ─── Flood fill (bote de pintura) ─────────────────────────── */
 export function floodFill(ctx, x, y, hexColor, width, height) {
   if (x < 0 || y < 0 || x >= width || y >= height) return;
   const imgData = ctx.getImageData(0, 0, width, height);
@@ -49,7 +44,8 @@ export function floodFill(ctx, x, y, hexColor, width, height) {
   const fill = hexToRgb(hexColor);
   if (colorsEqual(target, fill, 0)) return;
 
-  const tolerance = 24;
+  // ✅ Tolerancia configurable desde el slider derecho (por defecto 0)
+  const tolerance = Number(state.tolerance) || 0;
   const stack = [[x, y]];
   const visited = new Uint8Array(width * height);
 
@@ -248,6 +244,4 @@ export function applyTransformToCanvas(canvas, op, params = {}) {
   }
 }
 
-export function updateFooterInfo() {
-  // Delegado a app.js; mantenemos por compatibilidad
-}
+export function updateFooterInfo() {}

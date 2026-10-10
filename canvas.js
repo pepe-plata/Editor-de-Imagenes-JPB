@@ -16,16 +16,12 @@ const draw = {
   pointers: new Map(),
   twoFingerActive: false,
 
-  // Pinch: referencia FIJA al iniciar el gesto
   pinchStartDist: 0,
   pinchStartZoom: 1,
   pinchAnchorX: 0,
   pinchAnchorY: 0,
-
-  // Estado del gesto (solo zoom)
   pinchLastDist: 0,
 
-  // Scroll (pan) con 1 dedo
   scrollPanning: false,
   scrollPanPointerId: null,
   scrollPanStartX: 0,
@@ -49,7 +45,6 @@ const draw = {
   pickerActive: false,
   pickerPointerId: null,
 
-  // Redimensión por handles (extender área tipo Paint)
   resizeSession: null
 };
 
@@ -181,9 +176,7 @@ function onPointerDown(e) {
 
   draw.pointers.set(e.pointerId, { id: e.pointerId, x: e.clientX, y: e.clientY });
 
-  // Si es touch y hay 1 dedo: no decidimos aún — puede ser pan con 1 dedo, o pinch con 2
   if (draw.pointers.size === 2) {
-    // Cambiamos a modo pinch: cancelamos cualquier pan con 1 dedo o trazo
     clearTimeout(draw.firstTouchTimer);
     cancelScrollPan();
     draw.twoFingerActive = true;
@@ -195,13 +188,8 @@ function onPointerDown(e) {
 
   if (draw.spacePanning) { startPan(e); return; }
 
-  // ✅ 1 dedo sobre touch fuera de cualquier herramienta de dibujo → puede ser pan
-  // Pero si es sobre el canvas y hay herramienta activa, iniciamos trazo (con delay en touch).
   if (e.pointerType === 'touch') {
-    // Todavía no decidimos: esperamos 90ms por si entra un 2º dedo.
-    // Al mismo tiempo, dejamos la puerta abierta para convertirlo en pan.
     draw.firstTouchTimer = setTimeout(() => {
-      // Pasado el delay, decidimos: si es sobre el canvas, es trazo; si es fuera, es pan.
       const onCanvas = isPointerOnCanvas(e);
       if (onCanvas && needsDrawingTool()) {
         beginStroke(e);
@@ -210,13 +198,7 @@ function onPointerDown(e) {
       }
     }, 90);
   } else {
-    // Mouse / pen: comportamiento directo
-    if (isPointerOnCanvas(e) || state.tool !== 'picker') {
-      // ✅ Clic fuera del canvas también dibuja (como si fuera dentro)
-      beginStroke(e);
-    } else {
-      beginStroke(e);
-    }
+    beginStroke(e);
   }
 }
 
@@ -279,7 +261,6 @@ function onPointerUp(e) {
   if (draw.active) endStroke();
 }
 
-/* ─── Determinar si la herramienta activa dibuja o no ─── */
 function needsDrawingTool() {
   const t = state.tool;
   return t === 'pencil' || t === 'brush' || t === 'eraser' ||
@@ -349,7 +330,7 @@ function cancelScrollPan() {
 }
 
 /* ============================================================
-   PINCH — SOLO ZOOM (sin pan simultáneo)
+   PINCH — SOLO ZOOM
    ============================================================ */
 function resetGestureState() {
   draw.pinchStartDist = 0;
@@ -384,13 +365,9 @@ function updatePinch() {
   const scale = dist / draw.pinchStartDist;
   const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
 
-  // ✅ El ancla queda FIJA al punto inicial del pinch
   applyZoomAnchored(newZoom, draw.pinchAnchorX, draw.pinchAnchorY);
 }
 
-/**
- * Zoom anclado a un punto fijo de la pantalla.
- */
 function applyZoomAnchored(newZoom, anchorClientX, anchorClientY) {
   const scroll = els.canvasScroll;
   const rect = scroll.getBoundingClientRect();
@@ -412,7 +389,8 @@ function applyZoomAnchored(newZoom, anchorClientX, anchorClientY) {
 
   scaleHandles(newZoom);
   updateTextToolbarScale(newZoom);
-  document.getElementById('stZoom').textContent = Math.round(newZoom * 100) + '%';
+  const stZoom = document.getElementById('stZoom');
+  if (stZoom) stZoom.textContent = Math.round(newZoom * 100) + '%';
 }
 
 /* ============================================================
@@ -628,9 +606,6 @@ function commitShape(x0, y0, x1, y1, tool) {
 
 /* ============================================================
    VARITA MÁGICA
-   ============================================================
-   Selecciona una región contigua similar al color donde se hizo clic
-   y la convierte en un flotante.
    ============================================================ */
 function magicWandSelect(x, y) {
   const px = Math.round(x);
@@ -642,7 +617,8 @@ function magicWandSelect(x, y) {
   const W = img.width, H = img.height;
 
   const target = getPixel(data, px, py, W);
-  const tolerance = 30;
+  // ✅ Tolerancia configurable desde el slider derecho (por defecto 0)
+  const tolerance = Number(state.tolerance) || 0;
 
   const mask = new Uint8Array(W * H);
   const stack = [[px, py]];
@@ -675,7 +651,6 @@ function magicWandSelect(x, y) {
   const rw = maxX - minX + 1;
   const rh = maxY - minY + 1;
 
-  // Construir un canvas con solo los píxeles enmascarados
   floatingCanvas.width = rw;
   floatingCanvas.height = rh;
   floatingCtx.clearRect(0, 0, rw, rh);
@@ -697,7 +672,6 @@ function magicWandSelect(x, y) {
   }
   floatingCtx.putImageData(fdata, 0, 0);
 
-  // Borrar la región del canvas original
   for (let yy = 0; yy < rh; yy++) {
     for (let xx = 0; xx < rw; xx++) {
       const srcIdx = (minY + yy) * W + (minX + xx);
@@ -709,7 +683,6 @@ function magicWandSelect(x, y) {
   }
   mainCtx.putImageData(img, 0, 0);
 
-  // Redibujar los píxeles borrados con blanco si no es transparente
   if (!state.transparentBg) {
     mainCtx.save();
     mainCtx.globalCompositeOperation = 'destination-over';
@@ -1306,7 +1279,6 @@ function createTextBox(x, y) {
   setStatus('Editor de texto: escribe y pulsa ✓ o haz clic fuera');
 }
 
-/** Mantiene la barra del editor al mismo tamaño visual (contrarresta el zoom). */
 function updateTextToolbarScale(zoom) {
   const tb = document.getElementById('textToolbar');
   if (!tb) return;
@@ -1554,14 +1526,7 @@ export function cropToSelection(rect) {
 }
 
 /* ============================================================
-   HANDLES DEL CANVAS — EXTENDER/CONTRAR ÁREA (tipo Paint W10)
-   ============================================================
-   Al arrastrar un handle:
-     - E: crece por la derecha → ancho crece
-     - W: crece por la izquierda → ancho crece y contenido se desplaza a la derecha
-     - S: crece por abajo → alto crece
-     - N: crece por arriba → alto crece y contenido se desplaza hacia abajo
-   NO se reescala la imagen, solo se extiende o contrae el "papel".
+   HANDLES DEL CANVAS — EXTENDER/CONTRAR ÁREA
    ============================================================ */
 function initHandles() {
   document.querySelectorAll('.handle').forEach((h) => {
@@ -1581,7 +1546,6 @@ function onHandleDown(e) {
   const startW = mainCanvas.width;
   const startH = mainCanvas.height;
 
-  // Snapshot del contenido actual
   const tmp = document.createElement('canvas');
   tmp.width = startW;
   tmp.height = startH;
@@ -1614,48 +1578,20 @@ function updateHandleResize(ev) {
   let offX = 0;
   let offY = 0;
 
-  // ✅ Redimensión del LADO correspondiente (tipo Paint W10):
-  // E: ancho += dx, contenido anclado a la izquierda
   if (s.dir.includes('e')) {
     newW = Math.max(1, s.startW + dxCanvas);
     offX = 0;
   }
-  // W: ancho -= dx, contenido desplazado hacia la derecha si crece
   if (s.dir.includes('w')) {
     newW = Math.max(1, s.startW - dxCanvas);
-    offX = s.startW - newW; // si crece (newW > startW), offX < 0 → NO
-    // Realmente: si newW > startW, offX debe ser > 0 para empujar el contenido a la derecha
-    // Ej: startW=600, newW=700 → offX=100.
-    // Pero aquí dxCanvas es negativo (dedo va a la izq) → newW=600-(-100)=700 → offX=600-700=-100.
-    // Corregimos: offX = newW - startW (positivo si crece)
     offX = newW - s.startW;
   }
-  // S: alto += dy
   if (s.dir.includes('s')) {
     newH = Math.max(1, s.startH + dyCanvas);
     offY = 0;
   }
-  // N: alto -= dy, contenido desplazado si crece
   if (s.dir.includes('n')) {
     newH = Math.max(1, s.startH - dyCanvas);
-    offY = newH - s.startH;
-  }
-
-  // Simplificación: si es 'nw', 'ne', 'sw', 'se' se combinan ambos.
-  // Cuando crece por W o N, el offset es negativo en realidad porque el contenido
-  // se dibuja desde (0,0) pero queremos que se vea desplazado al crecer hacia arriba/izq.
-  // Corregimos:
-  if (s.dir.includes('w')) offX = Math.max(0, s.startW - newW) === 0 ? (newW - s.startW) : (newW - s.startW);
-  if (s.dir.includes('n')) offY = newH - s.startH;
-
-  // En realidad la fórmula correcta es:
-  // Si newW > startW (creció): el contenido debe desplazarse a la derecha → offX = newW - startW
-  // Si newW < startW (encogió): el contenido se recorta por la izquierda → offX = newW - startW (negativo)
-  // Y para E/S, offX/offY = 0 (anclado a la izquierda/arriba)
-  if (s.dir === 'w' || s.dir === 'nw' || s.dir === 'sw') {
-    offX = newW - s.startW;
-  }
-  if (s.dir === 'n' || s.dir === 'nw' || s.dir === 'ne') {
     offY = newH - s.startH;
   }
 
@@ -1720,13 +1656,10 @@ function applyZoom(newZoom, centerClientX, centerClientY) {
 
   scaleHandles(newZoom);
   updateTextToolbarScale(newZoom);
-  document.getElementById('stZoom').textContent = Math.round(newZoom * 100) + '%';
+  const stZoom = document.getElementById('stZoom');
+  if (stZoom) stZoom.textContent = Math.round(newZoom * 100) + '%';
 }
 
-/**
- * Los handles mantienen su tamaño VISUAL en pantalla, sin importar el zoom.
- * Se aplica scale(1/z) exacto (sin límites) para lograrlo.
- */
 function scaleHandles(z) {
   const inv = 1 / (z || 1);
   els.handles.querySelectorAll('.handle').forEach((h) => {
@@ -1746,7 +1679,6 @@ function scaleHandles(z) {
 
 export function zoom(factor, centerX, centerY) {
   const rect = els.canvasScroll.getBoundingClientRect();
-  // ✅ Si no se especifica centro, usar el centro del ÁREA VISIBLE
   const cx = centerX ?? rect.left + rect.width / 2;
   const cy = centerY ?? rect.top + rect.height / 2;
   const newZoom = Math.max(0.05, Math.min(20, state.zoom * factor));
@@ -1791,7 +1723,8 @@ export function zoomReset() {
   els.canvasScroll.scrollTop  = 0;
   scaleHandles(1);
   updateTextToolbarScale(1);
-  document.getElementById('stZoom').textContent = '100%';
+  const stZoom = document.getElementById('stZoom');
+  if (stZoom) stZoom.textContent = '100%';
 }
 
 /* ============================================================

@@ -316,7 +316,7 @@
   </div>
 </div>
 
-<!-- ═══════════ SLIDER VERTICAL ═══════════ -->
+<!-- ═══════════ SLIDER VERTICAL IZQUIERDO (tamaño pincel) ═══════════ -->
 <div id="brushSlider" class="brush-slider" hidden>
   <input
     id="brushSizeRange"
@@ -328,6 +328,20 @@
     aria-label="Tamaño del pincel"
   />
   <span id="brushSizeValue" class="brush-slider-value">4</span>
+</div>
+
+<!-- ═══════════ SLIDER VERTICAL DERECHO (tolerancia) ═══════════ -->
+<div id="toleranceSlider" class="brush-slider tolerance-slider" hidden>
+  <span id="toleranceValue" class="brush-slider-value">0</span>
+  <input
+    id="toleranceRange"
+    type="range"
+    min="0"
+    max="150"
+    value="0"
+    orient="vertical"
+    aria-label="Tolerancia de color"
+  />
 </div>
 
 <!-- ═══════════ ÁREA DEL CANVAS ═══════════ -->

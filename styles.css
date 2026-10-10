@@ -51,7 +51,6 @@ body {
   --checker-a:     #ffffff;
   --checker-b:     #e5e7eb;
 
-  /* Nuevo: tamaño de los handles */
   --handle-size:   18px;
 }
 
@@ -407,7 +406,7 @@ body {
   cursor: pointer;
 }
 
-/* ─── Slider vertical ─────────────────────────────────────── */
+/* ─── Slider vertical IZQUIERDO (tamaño pincel) ───────────── */
 .brush-slider {
   position: fixed;
   top: 50%;
@@ -463,6 +462,27 @@ body {
   color: var(--primary);
   min-width: 20px;
   text-align: center;
+}
+
+/* ─── Slider vertical DERECHO (tolerancia) ────────────────── */
+.tolerance-slider {
+  left: auto;
+  right: 16px;
+  animation: slideInRight 200ms ease-out;
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateY(-50%) translateX(12px); }
+  to   { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+.tolerance-slider .brush-slider-value {
+  color: var(--danger);
+  font-size: 12px;
+}
+.tolerance-slider input[type="range"]::-webkit-slider-thumb {
+  background: var(--danger);
+}
+.tolerance-slider input[type="range"]::-moz-range-thumb {
+  background: var(--danger);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -529,14 +549,11 @@ body {
   display: block;
 }
 
-/* ─── Handles del canvas — GRANDES y con tamaño en píxeles de PANTALLA ── */
+/* ─── Handles del canvas ──────────────────────────────────── */
 .handles {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  /* El wrap entero está escalado por transform: scale(z).
-     Los handles se contra-escalan por JS con transform: scale(1/z) para
-     que mantengan 18px reales en pantalla a cualquier zoom. */
 }
 .handle {
   position: absolute;
@@ -547,7 +564,6 @@ body {
   border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0,0,0,.45);
   pointer-events: auto;
-  /* Centrado exacto en la esquina/borde */
   margin-left: calc(var(--handle-size) / -2);
   margin-top:  calc(var(--handle-size) / -2);
   transform-origin: center center;
@@ -683,7 +699,7 @@ body {
 }
 
 /* ════════════════════════════════════════════════════════════
-   EDITOR DE TEXTO FLOTANTE — barra con tamaño FIJO
+   EDITOR DE TEXTO FLOTANTE
    ════════════════════════════════════════════════════════════ */
 .text-editor {
   position: absolute;
@@ -692,7 +708,6 @@ body {
   min-height: 80px;
   box-sizing: border-box;
   pointer-events: auto;
-  /* El editor SÍ escala con el canvas porque vive dentro del wrap */
 }
 .text-editor-toolbar {
   position: absolute;
@@ -712,7 +727,6 @@ body {
   overflow-y: hidden;
   scrollbar-width: none;
   z-index: 2;
-  /* ✅ Contrarrestar el zoom del canvas: la toolbar siempre al mismo tamaño */
   transform-origin: bottom left;
 }
 .text-editor-toolbar::-webkit-scrollbar { display: none; }
@@ -1110,8 +1124,9 @@ kbd {
   .color-btn-swatch { width: 20px; height: 20px; }
   .tb-btn-color .tb-caret { right: 1px; bottom: 1px; }
   .icon-btn { width: 32px; height: 32px; }
-  .brush-slider { left: 8px; padding: 10px 6px; }
+  .brush-slider { left: 8px; right: auto; padding: 10px 6px; }
   .brush-slider input[type="range"] { height: 140px; }
+  .tolerance-slider { left: auto; right: 8px; }
   .help-list.two-col { grid-template-columns: 1fr; }
   .header-sep { display: none; }
   .canvas-center { padding: 100px 16px; }

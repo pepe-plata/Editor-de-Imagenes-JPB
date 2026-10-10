@@ -66,6 +66,8 @@ export const state = {
   historyIndex: -1,
   historyMax: 40,
   transparentBg: false,
+  // ✅ Tolerancia para bote de pintura y varita mágica (0 = solo color exacto)
+  tolerance: 0,
   lastByGroup: {
     select: 'select-rect',
     pencil: 'pencil',
@@ -76,7 +78,7 @@ export const state = {
 };
 
 /* ============================================================
-   DOM — Referencias (todas defensivas, sin error si faltan)
+   DOM — Referencias
    ============================================================ */
 export const els = {
   splash:         document.getElementById('splash'),
@@ -101,6 +103,10 @@ export const els = {
   brushSlider:    document.getElementById('brushSlider'),
   brushSizeRange: document.getElementById('brushSizeRange'),
   brushSizeValue: document.getElementById('brushSizeValue'),
+  // Slider de tolerancia (derecha)
+  toleranceSlider: document.getElementById('toleranceSlider'),
+  toleranceRange:  document.getElementById('toleranceRange'),
+  toleranceValue:  document.getElementById('toleranceValue'),
   canvasArea:     document.getElementById('canvasArea'),
   canvasScroll:   document.getElementById('canvasScroll'),
   canvasCenter:   document.getElementById('canvasCenter'),
@@ -444,11 +450,18 @@ function updateActiveToolBtn(tool) {
   updateBrushSliderVisibility(tool);
 }
 
+/* ============================================================
+   VISIBILIDAD DE LOS SLIDERS LATERALES
+   - Izquierdo (brushSlider): pencil, brush, eraser, fill, shapes
+   - Derecho (toleranceSlider): fill, select-wand
+   ============================================================ */
 function updateBrushSliderVisibility(tool) {
-  if (!els.brushSlider) return;
-  const needsSlider = ['pencil', 'brush', 'eraser', 'fill'].includes(tool)
+  const needsBrush = ['pencil', 'brush', 'eraser', 'fill'].includes(tool)
                     || (tool && tool.startsWith('shape-'));
-  els.brushSlider.hidden = !needsSlider;
+  const needsTolerance = tool === 'fill' || tool === 'select-wand';
+
+  if (els.brushSlider) els.brushSlider.hidden = !needsBrush;
+  if (els.toleranceSlider) els.toleranceSlider.hidden = !needsTolerance;
 }
 
 /* ============================================================
@@ -642,7 +655,7 @@ function wireColorMenu() {
 }
 
 /* ============================================================
-   SLIDER VERTICAL
+   SLIDER VERTICAL IZQUIERDO (tamaño pincel)
    ============================================================ */
 function wireBrushSlider() {
   if (!els.brushSizeRange) return;
@@ -650,6 +663,22 @@ function wireBrushSlider() {
     const v = Number(els.brushSizeRange.value);
     state.strokeSize = v;
     if (els.brushSizeValue) els.brushSizeValue.textContent = v;
+  });
+}
+
+/* ============================================================
+   SLIDER VERTICAL DERECHO (tolerancia)
+   ============================================================ */
+function wireToleranceSlider() {
+  if (!els.toleranceRange) return;
+  // Sincronizar valor inicial (0 por defecto)
+  els.toleranceRange.value = state.tolerance;
+  if (els.toleranceValue) els.toleranceValue.textContent = state.tolerance;
+
+  els.toleranceRange.addEventListener('input', () => {
+    const v = Number(els.toleranceRange.value);
+    state.tolerance = v;
+    if (els.toleranceValue) els.toleranceValue.textContent = v;
   });
 }
 
@@ -1024,6 +1053,7 @@ async function init() {
     wireToolbar();
     wireColorMenu();
     wireBrushSlider();
+    wireToleranceSlider();
     wireModalClosing();
     wireHelpTabs();
     wireNewModal();
@@ -1095,6 +1125,8 @@ async function init() {
 
     if (els.brushSizeRange) els.brushSizeRange.value = state.strokeSize;
     if (els.brushSizeValue) els.brushSizeValue.textContent = state.strokeSize;
+    if (els.toleranceRange) els.toleranceRange.value = state.tolerance;
+    if (els.toleranceValue) els.toleranceValue.textContent = state.tolerance;
 
     setStatus('Listo');
     console.log('[JPB] ✓ Listo');
