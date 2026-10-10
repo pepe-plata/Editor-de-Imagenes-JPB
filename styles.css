@@ -511,14 +511,16 @@ body {
   padding: 0;
 }
 
-/* ✅ Padding grande en todas direcciones para garantizar scroll siempre.
-   Así el usuario puede mover el canvas a cualquier posición incluso si
-   es más pequeño que el área visible. El centrado inicial lo hace
-   centerCanvasInView() desde JS. */
+/* ✅ Padding MUY grande en todas direcciones.
+   Esto garantiza que:
+   1. Siempre hay contenido a la izquierda, derecha, arriba y abajo.
+   2. El usuario puede scrollear el canvas a cualquier posición.
+   3. El centrado manual (mediante pan) es posible en todas direcciones.
+   El centrado inicial lo hace centerCanvasInView() desde JS. */
 .canvas-center {
   display: block;
   box-sizing: content-box;
-  padding: 50vh 50vw;
+  padding: 100vh 100vw;
   background: transparent;
   border: 0;
   margin: 0;
@@ -550,7 +552,7 @@ body {
   display: block;
 }
 
-/* ─── Handles del canvas — AHORA circulares como los de figura ── */
+/* ─── Handles del canvas — circulares como los de figura ── */
 .handles {
   position: absolute;
   inset: 0;
@@ -1130,7 +1132,7 @@ kbd {
   .tolerance-slider { left: auto; right: 8px; }
   .help-list.two-col { grid-template-columns: 1fr; }
   .header-sep { display: none; }
-  .canvas-center { padding: 50vh 50vw; }
+  .canvas-center { padding: 100vh 100vw; }
   .te-text { font-size: 22px; }
   .te-btn { width: 34px; height: 34px; font-size: 15px; }
   .te-select, .te-num { height: 34px; }

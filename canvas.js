@@ -16,22 +16,19 @@ const draw = {
   pointers: new Map(),
   twoFingerActive: false,
 
-  // Pinch: referencia al iniciar el gesto
   pinchStartDist: 0,
   pinchStartZoom: 1,
-  pinchAnchorX: 0,   // client X del punto medio inicial
-  pinchAnchorY: 0,   // client Y del punto medio inicial
-  pinchAnchorLocalX: 0, // coords locales del anchor dentro del wrap (sin escalar)
+  pinchAnchorX: 0,
+  pinchAnchorY: 0,
+  pinchAnchorLocalX: 0,
   pinchAnchorLocalY: 0,
   pinchLastDist: 0,
   pinchLastMidX: 0,
   pinchLastMidY: 0,
 
-  // Acumuladores para ponderación de gesto (zoom vs pan)
   gestureAccumDist: 0,
   gestureAccumPan: 0,
 
-  // Scroll con 1 dedo (fuera del canvas o sin herramienta de dibujo)
   scrollPanning: false,
   scrollPanPointerId: null,
   scrollPanStartX: 0,
@@ -86,6 +83,13 @@ export function initCanvas() {
   els.canvasScroll.addEventListener('pointercancel', onPointerUp);
 
   els.canvasScroll.addEventListener('wheel', onWheel, { passive: false });
+
+  // Asegurar que el padding es recalcula en resize
+  window.addEventListener('resize', () => {
+    // Nada especial, el padding es 100vh/100vw que se adapta solo.
+    // Re-centramos por si el viewport cambió.
+    requestAnimationFrame(() => centerCanvasInView());
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !draw.spacePanning) {
@@ -341,11 +345,6 @@ function cancelScrollPan() {
 
 /* ============================================================
    PINCH CON PONDERACIÓN (zoom + pan)
-   ============================================================
-   Cada frame se evalúa qué delta domina:
-     - Cambio de distancia entre dedos → zoom
-     - Desplazamiento del punto medio (paralelo) → pan
-   Se aplica cada efecto con un peso de 0..1 según su dominancia.
    ============================================================ */
 function resetGestureState() {
   draw.pinchStartDist = 0;
@@ -371,7 +370,6 @@ function startPinch() {
   draw.pinchAnchorX = midX;
   draw.pinchAnchorY = midY;
 
-  // Guardar la coordenada LOCAL (sin escalar) del punto medio inicial en el wrap
   const r = els.canvasWrap.getBoundingClientRect();
   const z = state.zoom || 1;
   draw.pinchAnchorLocalX = (midX - r.left) / z;
@@ -393,35 +391,29 @@ function updatePinch() {
   const midX = (a.x + b.x) / 2;
   const midY = (a.y + b.y) / 2;
 
-  // Deltas desde el frame anterior
   const dDist = Math.abs(dist - draw.pinchLastDist);
   const dPan  = Math.hypot(midX - draw.pinchLastMidX, midY - draw.pinchLastMidY);
 
-  // Acumuladores con decaimiento (tendencia suavizada)
   draw.gestureAccumDist = draw.gestureAccumDist * 0.85 + dDist;
   draw.gestureAccumPan  = draw.gestureAccumPan  * 0.85 + dPan;
 
   const total = draw.gestureAccumDist + draw.gestureAccumPan;
   const ratio = total > 0.001 ? draw.gestureAccumDist / total : 0.5;
 
-  // Ponderación
   let zoomWeight = 0, panWeight = 0;
   if (ratio > 0.62) {
-    zoomWeight = 1; panWeight = 0;       // pinch dominante → solo zoom
+    zoomWeight = 1; panWeight = 0;
   } else if (ratio < 0.38) {
-    zoomWeight = 0; panWeight = 1;       // arrastre paralelo dominante → solo pan
+    zoomWeight = 0; panWeight = 1;
   } else {
-    // Mezcla proporcional
     zoomWeight = (ratio - 0.38) / 0.24;
     panWeight  = 1 - zoomWeight;
   }
 
-  // ── Zoom ponderado ──
   if (zoomWeight > 0 && draw.pinchStartDist > 4) {
     const scale = dist / draw.pinchStartDist;
     const targetZoom = draw.pinchStartZoom * scale;
     const oldZoom = state.zoom;
-    // Interpolar entre el zoom actual y el objetivo según el peso
     let newZoom = oldZoom + (targetZoom - oldZoom) * zoomWeight;
     newZoom = Math.max(0.05, Math.min(20, newZoom));
 
@@ -436,20 +428,13 @@ function updatePinch() {
     if (stZoom) stZoom.textContent = Math.round(newZoom * 100) + '%';
   }
 
-  // ── Pan ponderado ──
-  // Punto de referencia en pantalla:
-  //   followX = anchorX + (midX - anchorX) * panWeight
-  // Si panWeight=0 → seguimos el anchor inicial (sin pan, solo zoom).
-  // Si panWeight=1 → seguimos el midpoint actual (pan natural).
   const followX = draw.pinchAnchorX + (midX - draw.pinchAnchorX) * panWeight;
   const followY = draw.pinchAnchorY + (midY - draw.pinchAnchorY) * panWeight;
 
-  // Posición deseada del wrap top-left en pantalla
   const z = state.zoom || 1;
   const desiredWrapLeft = followX - draw.pinchAnchorLocalX * z;
   const desiredWrapTop  = followY - draw.pinchAnchorLocalY * z;
 
-  // Ajustar scroll para mover el wrap desde su posición actual a la deseada
   const wrapRectNow = els.canvasWrap.getBoundingClientRect();
   els.canvasScroll.scrollLeft += (wrapRectNow.left - desiredWrapLeft);
   els.canvasScroll.scrollTop  += (wrapRectNow.top  - desiredWrapTop);
@@ -461,16 +446,26 @@ function updatePinch() {
 
 /* ============================================================
    CENTRAR CANVAS EN EL VIEWPORT
+   ============================================================
+   Usa getBoundingClientRect() del wrap REAL (post-transform).
+   Esto funciona sin importar el padding, el zoom o el tamaño.
    ============================================================ */
 export function centerCanvasInView() {
   const scroll = els.canvasScroll;
-  if (!scroll) return;
-  const sw = scroll.scrollWidth;
-  const cw = scroll.clientWidth;
-  const sh = scroll.scrollHeight;
-  const ch = scroll.clientHeight;
-  scroll.scrollLeft = Math.max(0, (sw - cw) / 2);
-  scroll.scrollTop  = Math.max(0, (sh - ch) / 2);
+  const wrap = els.canvasWrap;
+  if (!scroll || !wrap) return;
+
+  // Forzar reflow para asegurar medidas actualizadas
+  void wrap.offsetWidth;
+
+  const sRect = scroll.getBoundingClientRect();
+  const wRect = wrap.getBoundingClientRect();
+
+  const dx = (wRect.left + wRect.width / 2) - (sRect.left + sRect.width / 2);
+  const dy = (wRect.top + wRect.height / 2) - (sRect.top + sRect.height / 2);
+
+  scroll.scrollLeft = scroll.scrollLeft + dx;
+  scroll.scrollTop  = scroll.scrollTop  + dy;
 }
 
 /* ============================================================
@@ -1605,7 +1600,7 @@ export function cropToSelection(rect) {
 }
 
 /* ============================================================
-   HANDLES DEL CANVAS — EXTENDER/CONTRAR ÁREA
+   HANDLES DEL CANVAS
    ============================================================ */
 function initHandles() {
   document.querySelectorAll('.handle').forEach((h) => {
@@ -1715,7 +1710,7 @@ function endHandleResize() {
 }
 
 /* ============================================================
-   ZOOM — usa el rect real del wrap para soportar padding dinámico
+   ZOOM
    ============================================================ */
 function applyZoom(newZoom, centerClientX, centerClientY) {
   const rect = els.canvasScroll.getBoundingClientRect();
@@ -1725,12 +1720,10 @@ function applyZoom(newZoom, centerClientX, centerClientY) {
 
   const oldZoom = state.zoom || 1;
 
-  // Punto local (sin escalar) bajo el centro indicado
   const wrapRect = els.canvasWrap.getBoundingClientRect();
   const localX = (centerClientX - wrapRect.left) / oldZoom;
   const localY = (centerClientY - wrapRect.top)  / oldZoom;
 
-  // Aplicar nuevo zoom
   state.zoom = newZoom;
   els.canvasWrap.style.transformOrigin = '0 0';
   els.canvasWrap.style.transform = `scale(${newZoom})`;
@@ -1740,7 +1733,6 @@ function applyZoom(newZoom, centerClientX, centerClientY) {
   scaleHandles(newZoom);
   updateTextToolbarScale(newZoom);
 
-  // Reajustar scroll para que el punto local siga bajo el centro indicado
   const desiredWrapLeft = centerClientX - localX * newZoom;
   const desiredWrapTop  = centerClientY - localY * newZoom;
   const newWrapRect = els.canvasWrap.getBoundingClientRect();
@@ -1799,8 +1791,8 @@ export function zoomFit() {
   const stZoom = document.getElementById('stZoom');
   if (stZoom) stZoom.textContent = Math.round(z * 100) + '%';
 
-  // Centrar el canvas tras aplicar el zoom
-  requestAnimationFrame(() => centerCanvasInView());
+  // Centrar el canvas SIN usar rAF para asegurar medidas actualizadas.
+  centerCanvasInView();
 }
 
 export function zoom100() {
@@ -1818,7 +1810,7 @@ export function zoomReset() {
   updateTextToolbarScale(1);
   const stZoom = document.getElementById('stZoom');
   if (stZoom) stZoom.textContent = '100%';
-  requestAnimationFrame(() => centerCanvasInView());
+  centerCanvasInView();
 }
 
 /* ============================================================
