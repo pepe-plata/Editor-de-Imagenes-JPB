@@ -76,7 +76,7 @@ export const state = {
 };
 
 /* ============================================================
-   DOM
+   DOM — Referencias (todas defensivas, sin error si faltan)
    ============================================================ */
 export const els = {
   splash:         document.getElementById('splash'),
@@ -239,8 +239,10 @@ function restoreFromHistory() {
   if (canvas.width !== entry.w || canvas.height !== entry.h) {
     canvas.width = entry.w;
     canvas.height = entry.h;
-    overlay.width = entry.w;
-    overlay.height = entry.h;
+    if (overlay) {
+      overlay.width = entry.w;
+      overlay.height = entry.h;
+    }
   }
 
   if (entry.snapshot instanceof ImageData) {
@@ -268,7 +270,7 @@ function restoreFromHistory() {
    ============================================================ */
 export function syncWrapSize() {
   const canvas = getMainCanvas();
-  if (!canvas) return;
+  if (!canvas || !els.canvasWrap) return;
   els.canvasWrap.style.width  = `${canvas.width}px`;
   els.canvasWrap.style.height = `${canvas.height}px`;
 }
@@ -279,12 +281,14 @@ export function syncWrapSize() {
 export function updateFooterInfo() {
   const canvas = getMainCanvas();
   if (!canvas) return;
-  els.stDim.textContent = `${canvas.width} × ${canvas.height} px`;
+  if (els.stDim)  els.stDim.textContent = `${canvas.width} × ${canvas.height} px`;
   const approx = Math.round(canvas.width * canvas.height * 4 / 1024);
-  els.stSize.textContent = approx > 1024
-    ? `~${(approx / 1024).toFixed(1)} MB`
-    : `~${approx} KB`;
-  els.stZoom.textContent = Math.round(state.zoom * 100) + '%';
+  if (els.stSize) {
+    els.stSize.textContent = approx > 1024
+      ? `~${(approx / 1024).toFixed(1)} MB`
+      : `~${approx} KB`;
+  }
+  if (els.stZoom) els.stZoom.textContent = Math.round(state.zoom * 100) + '%';
 }
 
 /* ============================================================
@@ -306,7 +310,7 @@ const LONG_PRESS_MS = 500;
 
 function closeAllMenus() {
   document.querySelectorAll('.tool-menu').forEach((m) => m.hidden = true);
-  els.colorMenu.hidden = true;
+  if (els.colorMenu) els.colorMenu.hidden = true;
 }
 
 function positionMenu(menu, anchor) {
@@ -360,6 +364,7 @@ function applyMenuSelection(menuItem, sourceBtn) {
 }
 
 function wireToolbar() {
+  if (!els.toolbar) return;
   els.toolbar.querySelectorAll('.tb-btn').forEach((btn) => {
     let pressTimer = null;
     let longPressed = false;
@@ -391,9 +396,9 @@ function wireToolbar() {
         setTool(tool);
         updateActiveToolBtn(tool);
       } else if (action === 'color') {
-        const wasOpen = !els.colorMenu.hidden;
+        const wasOpen = els.colorMenu ? !els.colorMenu.hidden : false;
         closeAllMenus();
-        if (!wasOpen) {
+        if (!wasOpen && els.colorMenu) {
           els.colorMenu.hidden = false;
           positionMenu(els.colorMenu, btn);
         }
@@ -416,18 +421,22 @@ function wireToolbar() {
   });
 
   document.addEventListener('click', (e) => {
-    if (!els.toolbar.contains(e.target) &&
-        !els.colorMenu.contains(e.target) &&
-        !e.target.closest('.tool-menu')) {
+    const inToolbar = els.toolbar && els.toolbar.contains(e.target);
+    const inColor = els.colorMenu && els.colorMenu.contains(e.target);
+    const inMenu = e.target.closest('.tool-menu');
+    if (!inToolbar && !inColor && !inMenu) {
       closeAllMenus();
     }
   });
 
   window.addEventListener('resize', closeAllMenus);
-  els.canvasScroll.addEventListener('scroll', closeAllMenus, { passive: true });
+  if (els.canvasScroll) {
+    els.canvasScroll.addEventListener('scroll', closeAllMenus, { passive: true });
+  }
 }
 
 function updateActiveToolBtn(tool) {
+  if (!els.toolbar) return;
   els.toolbar.querySelectorAll('.tb-btn').forEach((b) => {
     const t = b.dataset.tool;
     b.classList.toggle('active', t === tool);
@@ -436,6 +445,7 @@ function updateActiveToolBtn(tool) {
 }
 
 function updateBrushSliderVisibility(tool) {
+  if (!els.brushSlider) return;
   const needsSlider = ['pencil', 'brush', 'eraser', 'fill'].includes(tool)
                     || (tool && tool.startsWith('shape-'));
   els.brushSlider.hidden = !needsSlider;
@@ -457,8 +467,8 @@ function handleToolbarAction(action) {
     case 'crop':        handleCrop(); break;
     case 'copy':        copySelection(); break;
     case 'paste':       pasteFromClipboard(); break;
-    case 'zoom-in':     zoom(1.25); setStatus(`Zoom ${Math.round(state.zoom*100)}%`); break;
-    case 'zoom-out':    zoom(0.8);  setStatus(`Zoom ${Math.round(state.zoom*100)}%`); break;
+    case 'zoom-in':     zoom(1.25); break;
+    case 'zoom-out':    zoom(0.8);  break;
     case 'zoom-fit':    zoomFit(); setStatus('Ajustado a pantalla'); break;
     case 'undo':        undo(); break;
     case 'redo':        redo(); break;
@@ -484,6 +494,7 @@ async function copySelection() {
     const canvas = getMainCanvas();
     if (sel.floating) {
       const floatingCanvas = document.getElementById('floatingCanvas');
+      if (!floatingCanvas) return;
       blob = await new Promise((res) => floatingCanvas.toBlob(res, 'image/png'));
     } else {
       const tmp = document.createElement('canvas');
@@ -523,8 +534,10 @@ async function pasteFromClipboard() {
       const imgType = item.types.find((t) => t.startsWith('image/'));
       if (imgType) {
         const blob = await item.getType(imgType);
-        const { pasteAsFloating } = await import('./canvas.js');
-        await pasteAsFloating(blob);
+        const mod = await import('./canvas.js');
+        if (typeof mod.pasteAsFloating === 'function') {
+          await mod.pasteAsFloating(blob);
+        }
         return;
       }
     }
@@ -544,6 +557,7 @@ const CLASSIC_COLORS = [
 ];
 
 function renderColorMenu() {
+  if (!els.colorMenuGrid) return;
   els.colorMenuGrid.innerHTML = '';
   for (const color of CLASSIC_COLORS) {
     const sw = document.createElement('div');
@@ -552,12 +566,14 @@ function renderColorMenu() {
     sw.title = color;
     sw.addEventListener('click', (e) => {
       e.stopPropagation();
-      const activeTab = els.colorMenu.querySelector('.color-tab.active')?.dataset.ctab;
+      const activeTab = els.colorMenu
+        ? els.colorMenu.querySelector('.color-tab.active')?.dataset.ctab
+        : 'primary';
       if (activeTab === 'secondary') {
         setSecondaryColor(color);
       } else {
         setPrimaryColor(color);
-        els.colorBtnSwatch.style.background = color;
+        if (els.colorBtnSwatch) els.colorBtnSwatch.style.background = color;
       }
       syncColorUI();
     });
@@ -566,16 +582,21 @@ function renderColorMenu() {
 }
 
 function syncColorUI() {
-  els.colorPrimary.value = state.primary;
-  els.colorSecondary.value = state.secondary;
-  els.colorBtnSwatch.style.background = state.primary;
+  if (els.colorPrimary) els.colorPrimary.value = state.primary;
+  if (els.colorSecondary) els.colorSecondary.value = state.secondary;
+  if (els.colorBtnSwatch) els.colorBtnSwatch.style.background = state.primary;
 }
 
 function wireColorMenu() {
-  els.colorMenu.querySelector('[data-close-color]').addEventListener('click', (e) => {
-    e.stopPropagation();
-    els.colorMenu.hidden = true;
-  });
+  if (!els.colorMenu) return;
+
+  const closeBtn = els.colorMenu.querySelector('[data-close-color]');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      els.colorMenu.hidden = true;
+    });
+  }
 
   els.colorMenu.querySelectorAll('.color-tab').forEach((tab) => {
     tab.addEventListener('click', (e) => {
@@ -588,28 +609,34 @@ function wireColorMenu() {
     });
   });
 
-  els.colorPrimary.addEventListener('input', () => {
-    setPrimaryColor(els.colorPrimary.value);
-    els.colorBtnSwatch.style.background = state.primary;
-  });
-  els.colorSecondary.addEventListener('input', () => {
-    setSecondaryColor(els.colorSecondary.value);
-  });
+  if (els.colorPrimary) {
+    els.colorPrimary.addEventListener('input', () => {
+      setPrimaryColor(els.colorPrimary.value);
+      if (els.colorBtnSwatch) els.colorBtnSwatch.style.background = state.primary;
+    });
+  }
+  if (els.colorSecondary) {
+    els.colorSecondary.addEventListener('input', () => {
+      setSecondaryColor(els.colorSecondary.value);
+    });
+  }
 
-  els.colorCustomAdd.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const color = els.colorCustom.value;
-    if (!CLASSIC_COLORS.includes(color)) CLASSIC_COLORS.unshift(color);
-    const activeTab = els.colorMenu.querySelector('.color-tab.active')?.dataset.ctab;
-    if (activeTab === 'secondary') {
-      setSecondaryColor(color);
-    } else {
-      setPrimaryColor(color);
-      els.colorBtnSwatch.style.background = color;
-    }
-    renderColorMenu();
-    setStatus(`Color ${color} seleccionado`);
-  });
+  if (els.colorCustomAdd) {
+    els.colorCustomAdd.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const color = els.colorCustom ? els.colorCustom.value : '#000000';
+      if (!CLASSIC_COLORS.includes(color)) CLASSIC_COLORS.unshift(color);
+      const activeTab = els.colorMenu.querySelector('.color-tab.active')?.dataset.ctab;
+      if (activeTab === 'secondary') {
+        setSecondaryColor(color);
+      } else {
+        setPrimaryColor(color);
+        if (els.colorBtnSwatch) els.colorBtnSwatch.style.background = color;
+      }
+      renderColorMenu();
+      setStatus(`Color ${color} seleccionado`);
+    });
+  }
 
   els.colorMenu.addEventListener('click', (e) => e.stopPropagation());
 }
@@ -618,10 +645,11 @@ function wireColorMenu() {
    SLIDER VERTICAL
    ============================================================ */
 function wireBrushSlider() {
+  if (!els.brushSizeRange) return;
   els.brushSizeRange.addEventListener('input', () => {
     const v = Number(els.brushSizeRange.value);
     state.strokeSize = v;
-    els.brushSizeValue.textContent = v;
+    if (els.brushSizeValue) els.brushSizeValue.textContent = v;
   });
 }
 
@@ -652,6 +680,7 @@ function wireHelpTabs() {
     tab.addEventListener('click', () => {
       const panel = tab.dataset.tab;
       const modal = tab.closest('.modal');
+      if (!modal) return;
       modal.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
       modal.querySelectorAll('.tab-panel').forEach((p) =>
         p.classList.toggle('active', p.dataset.panel === panel)
@@ -665,7 +694,7 @@ function wireHelpTabs() {
    ============================================================ */
 function openNewModal() {
   const sel = document.getElementById('newPreset');
-  if (!sel.dataset.filled) {
+  if (sel && !sel.dataset.filled) {
     sel.innerHTML = '<option value="">— Personalizado —</option>';
     for (const [key, cfg] of Object.entries(SHEET_SIZES)) {
       const opt = document.createElement('option');
@@ -675,11 +704,15 @@ function openNewModal() {
     }
     sel.dataset.filled = '1';
   }
-  document.getElementById('newW').value = 600;
-  document.getElementById('newH').value = 800;
-  document.getElementById('newTransparent').checked = false;
-  sel.value = '';
-  document.getElementById('newHint').textContent = '600 × 800 px — tamaño por defecto';
+  const newW = document.getElementById('newW');
+  const newH = document.getElementById('newH');
+  const newT = document.getElementById('newTransparent');
+  const hint = document.getElementById('newHint');
+  if (newW) newW.value = 600;
+  if (newH) newH.value = 800;
+  if (newT) newT.checked = false;
+  if (sel) sel.value = '';
+  if (hint) hint.textContent = '600 × 800 px — tamaño por defecto';
   openModal(els.modalNew);
 }
 
@@ -689,23 +722,28 @@ function wireNewModal() {
   const hIn  = document.getElementById('newH');
   const hint = document.getElementById('newHint');
 
-  sel.addEventListener('change', () => {
-    const cfg = SHEET_SIZES[sel.value];
-    if (!cfg) { hint.textContent = 'Tamaño personalizado'; return; }
-    const wpx = cmToPx(cfg.w);
-    const hpx = cmToPx(cfg.h);
-    wIn.value = wpx;
-    hIn.value = hpx;
-    hint.textContent = `${cfg.label} → ${wpx} × ${hpx} px`;
-  });
+  if (sel) {
+    sel.addEventListener('change', () => {
+      const cfg = SHEET_SIZES[sel.value];
+      if (!cfg) { if (hint) hint.textContent = 'Tamaño personalizado'; return; }
+      const wpx = cmToPx(cfg.w);
+      const hpx = cmToPx(cfg.h);
+      if (wIn) wIn.value = wpx;
+      if (hIn) hIn.value = hpx;
+      if (hint) hint.textContent = `${cfg.label} → ${wpx} × ${hpx} px`;
+    });
+  }
 
-  document.getElementById('btnNewConfirm').addEventListener('click', () => {
-    const w = Math.max(1, Number(wIn.value) || 600);
-    const h = Math.max(1, Number(hIn.value) || 800);
-    const transparent = document.getElementById('newTransparent').checked;
-    createNewCanvas(w, h, transparent ? 'transparent' : 'white');
-    closeModal(els.modalNew);
-  });
+  const btn = document.getElementById('btnNewConfirm');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const w = Math.max(1, Number(wIn ? wIn.value : 600) || 600);
+      const h = Math.max(1, Number(hIn ? hIn.value : 800) || 800);
+      const transparent = document.getElementById('newTransparent')?.checked;
+      createNewCanvas(w, h, transparent ? 'transparent' : 'white');
+      closeModal(els.modalNew);
+    });
+  }
 }
 
 /* ============================================================
@@ -739,12 +777,16 @@ export function createNewCanvas(w, h, bg = 'white') {
   state.historyIndex = -1;
   state.zoom = 1;
 
-  els.fileName.value = state.fileName;
+  if (els.fileName) els.fileName.value = state.fileName;
 
-  els.canvasWrap.style.transform = 'scale(1)';
-  els.canvasWrap.style.transformOrigin = '0 0';
-  els.canvasScroll.scrollLeft = 0;
-  els.canvasScroll.scrollTop = 0;
+  if (els.canvasWrap) {
+    els.canvasWrap.style.transform = 'scale(1)';
+    els.canvasWrap.style.transformOrigin = '0 0';
+  }
+  if (els.canvasScroll) {
+    els.canvasScroll.scrollLeft = 0;
+    els.canvasScroll.scrollTop = 0;
+  }
 
   syncWrapSize();
   pushHistory();
@@ -762,9 +804,13 @@ export function createNewCanvas(w, h, bg = 'white') {
    ============================================================ */
 function openResizeModal() {
   const c = getMainCanvas();
-  document.getElementById('resizeW').value = c.width;
-  document.getElementById('resizeH').value = c.height;
-  document.getElementById('resizePct').value = 100;
+  if (!c) return;
+  const rw = document.getElementById('resizeW');
+  const rh = document.getElementById('resizeH');
+  const rp = document.getElementById('resizePct');
+  if (rw) rw.value = c.width;
+  if (rh) rh.value = c.height;
+  if (rp) rp.value = 100;
   openModal(els.modalResize);
 }
 
@@ -777,40 +823,54 @@ function wireResizeModal() {
 
   let baseW = 0, baseH = 0;
   const modal = els.modalResize;
-  const obs = new MutationObserver(() => {
-    if (!modal.hidden) {
-      baseW = c().width;
-      baseH = c().height;
-    }
-  });
-  obs.observe(modal, { attributes: true, attributeFilter: ['hidden'] });
+  if (modal) {
+    const obs = new MutationObserver(() => {
+      if (!modal.hidden) {
+        const canvas = c();
+        if (canvas) {
+          baseW = canvas.width;
+          baseH = canvas.height;
+        }
+      }
+    });
+    obs.observe(modal, { attributes: true, attributeFilter: ['hidden'] });
+  }
 
-  wIn.addEventListener('input', () => {
-    if (!ratio.checked) return;
-    const w = Number(wIn.value) || 0;
-    hIn.value = Math.round(w * (baseH / baseW));
-  });
-  hIn.addEventListener('input', () => {
-    if (!ratio.checked) return;
-    const h = Number(hIn.value) || 0;
-    wIn.value = Math.round(h * (baseW / baseH));
-  });
-  pct.addEventListener('input', () => {
-    const p = Number(pct.value) || 100;
-    wIn.value = Math.round(baseW * p / 100);
-    hIn.value = Math.round(baseH * p / 100);
-  });
+  if (wIn) {
+    wIn.addEventListener('input', () => {
+      if (!ratio || !ratio.checked || !baseW || !baseH) return;
+      const w = Number(wIn.value) || 0;
+      if (hIn) hIn.value = Math.round(w * (baseH / baseW));
+    });
+  }
+  if (hIn) {
+    hIn.addEventListener('input', () => {
+      if (!ratio || !ratio.checked || !baseW || !baseH) return;
+      const h = Number(hIn.value) || 0;
+      if (wIn) wIn.value = Math.round(h * (baseW / baseH));
+    });
+  }
+  if (pct) {
+    pct.addEventListener('input', () => {
+      const p = Number(pct.value) || 100;
+      if (wIn) wIn.value = Math.round(baseW * p / 100);
+      if (hIn) hIn.value = Math.round(baseH * p / 100);
+    });
+  }
 
-  document.getElementById('btnResizeConfirm').addEventListener('click', () => {
-    const w = Math.max(1, Number(wIn.value) || baseW);
-    const h = Math.max(1, Number(hIn.value) || baseH);
-    doResize(w, h);
-    syncWrapSize();
-    pushHistory(); markDirty();
-    closeModal(els.modalResize);
-    setStatus(`Redimensionado a ${w} × ${h} px`);
-    requestAnimationFrame(() => zoomFit());
-  });
+  const btn = document.getElementById('btnResizeConfirm');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const w = Math.max(1, Number(wIn ? wIn.value : baseW) || baseW);
+      const h = Math.max(1, Number(hIn ? hIn.value : baseH) || baseH);
+      doResize(w, h);
+      syncWrapSize();
+      pushHistory(); markDirty();
+      closeModal(els.modalResize);
+      setStatus(`Redimensionado a ${w} × ${h} px`);
+      requestAnimationFrame(() => zoomFit());
+    });
+  }
 }
 
 /* ============================================================
@@ -839,6 +899,7 @@ function wireKeyboard() {
         case 'f': activateTool('fill'); break;
         case 't': activateTool('text'); break;
         case 'i': activateTool('picker'); break;
+        case 'w': activateTool('select-wand'); break;
         case '+': case '=': zoom(1.25); break;
         case '-': case '_': zoom(0.8); break;
         case '0': zoomFit(); break;
@@ -857,8 +918,10 @@ function activateTool(tool) {
 
 function changeBrushSize(delta) {
   const v = Math.max(1, Math.min(100, state.strokeSize + delta));
-  els.brushSizeRange.value = v;
-  els.brushSizeRange.dispatchEvent(new Event('input'));
+  if (els.brushSizeRange) {
+    els.brushSizeRange.value = v;
+    els.brushSizeRange.dispatchEvent(new Event('input'));
+  }
 }
 
 /* ============================================================
@@ -876,9 +939,9 @@ const EMOJI_CATEGORIES = {
 };
 
 function renderEmojiPicker() {
+  if (!els.emojiTabs || !els.emojiGrid) return;
   els.emojiTabs.innerHTML = '';
   els.emojiGrid.innerHTML = '';
-
   const keys = Object.keys(EMOJI_CATEGORIES);
   keys.forEach((cat, i) => {
     const btn = document.createElement('button');
@@ -891,11 +954,11 @@ function renderEmojiPicker() {
     });
     els.emojiTabs.appendChild(btn);
   });
-
   renderEmojiGrid(keys[0]);
 }
 
 function renderEmojiGrid(cat) {
+  if (!els.emojiGrid) return;
   els.emojiGrid.innerHTML = '';
   for (const e of EMOJI_CATEGORIES[cat]) {
     const b = document.createElement('button');
@@ -933,6 +996,7 @@ function insertEmojiIntoEditor(emoji) {
 }
 
 function wireEmojiPicker() {
+  if (!els.teEmoji) return;
   els.teEmoji.addEventListener('click', (e) => {
     e.stopPropagation();
     renderEmojiPicker();
@@ -944,85 +1008,100 @@ function wireEmojiPicker() {
    INIT
    ============================================================ */
 async function init() {
-  setTimeout(() => els.splash.classList.add('hide'), 2000);
+  try {
+    console.log('[JPB] ▶ Inicializando…');
 
-  initCanvas();
-  initTools();
+    setTimeout(() => { if (els.splash) els.splash.classList.add('hide'); }, 2000);
 
-  renderColorMenu();
-  syncColorUI();
-  renderPalette();
-  updateFooterInfo();
+    initCanvas();
+    initTools();
 
-  wireToolbar();
-  wireColorMenu();
-  wireBrushSlider();
-  wireModalClosing();
-  wireHelpTabs();
-  wireNewModal();
-  wireResizeModal();
-  wireKeyboard();
-  wireEmojiPicker();
+    renderColorMenu();
+    syncColorUI();
+    renderPalette();
+    updateFooterInfo();
 
-  els.btnOpen.addEventListener('click', () => openFileDialog());
-  els.btnNew.addEventListener('click', () => openNewModal());
-  els.btnSave.addEventListener('click', () => { buildSaveModal(); openModal(els.modalSave); });
-  els.btnUndo.addEventListener('click', undo);
-  els.btnRedo.addEventListener('click', redo);
-  els.btnCopy.addEventListener('click', copySelection);
-  els.btnPaste.addEventListener('click', pasteFromClipboard);
-  els.btnTheme.addEventListener('click', toggleTheme);
-  els.btnHelp.addEventListener('click', () => openModal(els.modalHelp));
+    wireToolbar();
+    wireColorMenu();
+    wireBrushSlider();
+    wireModalClosing();
+    wireHelpTabs();
+    wireNewModal();
+    wireResizeModal();
+    wireKeyboard();
+    wireEmojiPicker();
 
-  els.fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (file) await openFromFile(file);
-    els.fileInput.value = '';
-  });
+    if (els.btnOpen)  els.btnOpen.addEventListener('click', () => openFileDialog());
+    if (els.btnNew)   els.btnNew.addEventListener('click', () => openNewModal());
+    if (els.btnSave)  els.btnSave.addEventListener('click', () => { buildSaveModal(); openModal(els.modalSave); });
+    if (els.btnUndo)  els.btnUndo.addEventListener('click', undo);
+    if (els.btnRedo)  els.btnRedo.addEventListener('click', redo);
+    if (els.btnCopy)  els.btnCopy.addEventListener('click', copySelection);
+    if (els.btnPaste) els.btnPaste.addEventListener('click', pasteFromClipboard);
+    if (els.btnTheme) els.btnTheme.addEventListener('click', toggleTheme);
+    if (els.btnHelp)  els.btnHelp.addEventListener('click', () => openModal(els.modalHelp));
 
-  ['dragenter', 'dragover'].forEach((ev) =>
-    els.canvasArea.addEventListener(ev, (e) => e.preventDefault())
-  );
-  els.canvasArea.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) await openFromFile(file);
-  });
-
-  document.addEventListener('paste', async (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        const blob = item.getAsFile();
-        if (blob) {
-          const { pasteAsFloating } = await import('./canvas.js');
-          await pasteAsFloating(blob);
-        }
-        return;
-      }
+    if (els.fileInput) {
+      els.fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) await openFromFile(file);
+        els.fileInput.value = '';
+      });
     }
-  });
 
-  window.addEventListener('beforeunload', (e) => {
-    if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
-  });
+    if (els.canvasArea) {
+      ['dragenter', 'dragover'].forEach((ev) =>
+        els.canvasArea.addEventListener(ev, (e) => e.preventDefault())
+      );
+      els.canvasArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) await openFromFile(file);
+      });
+    }
 
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    document.addEventListener('paste', async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const blob = item.getAsFile();
+          if (blob) {
+            const mod = await import('./canvas.js');
+            if (typeof mod.pasteAsFloating === 'function') {
+              await mod.pasteAsFloating(blob);
+            }
+          }
+          return;
+        }
+      }
     });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+
+    await handleFileHandlerLaunch();
+    await handleSharedFile();
+
+    createNewCanvas(600, 800, 'white');
+    activateTool('pencil');
+
+    if (els.brushSizeRange) els.brushSizeRange.value = state.strokeSize;
+    if (els.brushSizeValue) els.brushSizeValue.textContent = state.strokeSize;
+
+    setStatus('Listo');
+    console.log('[JPB] ✓ Listo');
+  } catch (err) {
+    console.error('[JPB] ✗ Error en init():', err);
+    setStatus('Error al iniciar (ver consola)');
   }
-
-  await handleFileHandlerLaunch();
-  await handleSharedFile();
-
-  createNewCanvas(600, 800, 'white');
-  activateTool('pencil');
-  els.brushSizeRange.value = state.strokeSize;
-  els.brushSizeValue.textContent = state.strokeSize;
-
-  setStatus('Listo');
 }
 
 if (document.readyState === 'loading') {
