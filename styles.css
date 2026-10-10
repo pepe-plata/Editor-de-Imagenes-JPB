@@ -510,16 +510,18 @@ body {
   margin: 0;
   padding: 0;
 }
+
+/* ✅ Padding grande en todas direcciones para garantizar scroll siempre.
+   Así el usuario puede mover el canvas a cualquier posición incluso si
+   es más pequeño que el área visible. El centrado inicial lo hace
+   centerCanvasInView() desde JS. */
 .canvas-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 100px 24px;
-  min-width: 100%;
-  min-height: 100%;
-  width: max-content;
-  box-sizing: border-box;
+  display: block;
+  box-sizing: content-box;
+  padding: 50vh 50vw;
   background: transparent;
+  border: 0;
+  margin: 0;
 }
 .canvas-wrap {
   position: relative;
@@ -535,8 +537,7 @@ body {
     linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
-  flex-shrink: 0;
-  margin: auto;
+  margin: 0;
 }
 #mainCanvas {
   display: block;
@@ -549,7 +550,7 @@ body {
   display: block;
 }
 
-/* ─── Handles del canvas ──────────────────────────────────── */
+/* ─── Handles del canvas — AHORA circulares como los de figura ── */
 .handles {
   position: absolute;
   inset: 0;
@@ -559,10 +560,10 @@ body {
   position: absolute;
   width: var(--handle-size);
   height: var(--handle-size);
-  background: var(--primary);
-  border: 3px solid #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  background: #fff;
+  border: 3px solid var(--primary);
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
   pointer-events: auto;
   margin-left: calc(var(--handle-size) / -2);
   margin-top:  calc(var(--handle-size) / -2);
@@ -1129,7 +1130,7 @@ kbd {
   .tolerance-slider { left: auto; right: 8px; }
   .help-list.two-col { grid-template-columns: 1fr; }
   .header-sep { display: none; }
-  .canvas-center { padding: 100px 16px; }
+  .canvas-center { padding: 50vh 50vw; }
   .te-text { font-size: 22px; }
   .te-btn { width: 34px; height: 34px; font-size: 15px; }
   .te-select, .te-num { height: 34px; }
