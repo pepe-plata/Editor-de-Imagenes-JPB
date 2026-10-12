@@ -7,7 +7,7 @@ import {
   initCanvas, setTool, zoom, zoomFit, zoom100,
   doRotate, doFlip, doResize, doCrop, cropToSelection,
   getMainCanvas, clearShapeSelection, commitFloating,
-  getActiveSelection
+  getActiveSelection, deleteSelection
 } from './canvas.js';
 
 import {
@@ -66,7 +66,6 @@ export const state = {
   historyIndex: -1,
   historyMax: 40,
   transparentBg: false,
-  // ✅ Tolerancia para bote de pintura y varita mágica (0 = solo color exacto)
   tolerance: 0,
   lastByGroup: {
     select: 'select-rect',
@@ -78,7 +77,7 @@ export const state = {
 };
 
 /* ============================================================
-   DOM — Referencias
+   DOM
    ============================================================ */
 export const els = {
   splash:         document.getElementById('splash'),
@@ -103,7 +102,6 @@ export const els = {
   brushSlider:    document.getElementById('brushSlider'),
   brushSizeRange: document.getElementById('brushSizeRange'),
   brushSizeValue: document.getElementById('brushSizeValue'),
-  // Slider de tolerancia (derecha)
   toleranceSlider: document.getElementById('toleranceSlider'),
   toleranceRange:  document.getElementById('toleranceRange'),
   toleranceValue:  document.getElementById('toleranceValue'),
@@ -450,11 +448,6 @@ function updateActiveToolBtn(tool) {
   updateBrushSliderVisibility(tool);
 }
 
-/* ============================================================
-   VISIBILIDAD DE LOS SLIDERS LATERALES
-   - Izquierdo (brushSlider): pencil, brush, eraser, fill, shapes
-   - Derecho (toleranceSlider): fill, select-wand
-   ============================================================ */
 function updateBrushSliderVisibility(tool) {
   const needsBrush = ['pencil', 'brush', 'eraser', 'fill'].includes(tool)
                     || (tool && tool.startsWith('shape-'));
@@ -480,11 +473,22 @@ function handleToolbarAction(action) {
     case 'crop':        handleCrop(); break;
     case 'copy':        copySelection(); break;
     case 'paste':       pasteFromClipboard(); break;
+    case 'delete':      handleDelete(); break;
     case 'zoom-in':     zoom(1.25); break;
     case 'zoom-out':    zoom(0.8);  break;
     case 'zoom-fit':    zoomFit(); setStatus('Ajustado a pantalla'); break;
     case 'undo':        undo(); break;
     case 'redo':        redo(); break;
+  }
+}
+
+function handleDelete() {
+  const ok = deleteSelection();
+  if (ok) {
+    pushHistory(); markDirty();
+    setStatus('Selección eliminada');
+  } else {
+    setStatus('No hay selección activa para eliminar');
   }
 }
 
@@ -671,7 +675,6 @@ function wireBrushSlider() {
    ============================================================ */
 function wireToleranceSlider() {
   if (!els.toleranceRange) return;
-  // Sincronizar valor inicial (0 por defecto)
   els.toleranceRange.value = state.tolerance;
   if (els.toleranceValue) els.toleranceValue.textContent = state.tolerance;
 
@@ -919,6 +922,12 @@ function wireKeyboard() {
     if (ctrl && e.key.toLowerCase() === 'n') { e.preventDefault(); openNewModal(); return; }
     if (ctrl && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelection(); return; }
     if (ctrl && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteFromClipboard(); return; }
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      handleDelete();
+      return;
+    }
 
     if (!ctrl) {
       switch (e.key.toLowerCase()) {

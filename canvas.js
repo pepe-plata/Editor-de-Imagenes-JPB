@@ -8,6 +8,7 @@ import { floodFill, pickColor, drawShape } from './tools.js';
 
 let mainCanvas, overlayCanvas, mainCtx, overlayCtx;
 let floatingCanvas, floatingCtx, floatingLayer, floatRect;
+let wandOverlay, wandCtx; // Capa para preview de varita mágica
 
 const draw = {
   active: false,
@@ -20,14 +21,7 @@ const draw = {
   pinchStartZoom: 1,
   pinchAnchorX: 0,
   pinchAnchorY: 0,
-  pinchAnchorLocalX: 0,
-  pinchAnchorLocalY: 0,
   pinchLastDist: 0,
-  pinchLastMidX: 0,
-  pinchLastMidY: 0,
-
-  gestureAccumDist: 0,
-  gestureAccumPan: 0,
 
   scrollPanning: false,
   scrollPanPointerId: null,
@@ -69,10 +63,18 @@ export function initCanvas() {
   overlayCtx    = overlayCanvas.getContext('2d');
   floatingCtx   = floatingCanvas.getContext('2d', { willReadFrequently: true });
 
+  // ✅ Crear capa de preview para varita mágica
+  wandOverlay = document.createElement('canvas');
+  wandOverlay.className = 'wand-overlay';
+  wandCtx = wandOverlay.getContext('2d');
+  els.canvasWrap.appendChild(wandOverlay);
+
   mainCanvas.width = 600;
   mainCanvas.height = 800;
   overlayCanvas.width = 600;
   overlayCanvas.height = 800;
+  wandOverlay.width = 600;
+  wandOverlay.height = 800;
 
   syncWrapSize();
 
@@ -83,13 +85,6 @@ export function initCanvas() {
   els.canvasScroll.addEventListener('pointercancel', onPointerUp);
 
   els.canvasScroll.addEventListener('wheel', onWheel, { passive: false });
-
-  // Asegurar que el padding es recalcula en resize
-  window.addEventListener('resize', () => {
-    // Nada especial, el padding es 100vh/100vw que se adapta solo.
-    // Re-centramos por si el viewport cambió.
-    requestAnimationFrame(() => centerCanvasInView());
-  });
 
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !draw.spacePanning) {
@@ -160,6 +155,7 @@ export function setTool(tool) {
   els.canvasWrap.dataset.cursor = tool;
   if (!tool.startsWith('select') && !tool.startsWith('shape-')) clearShapeSelection();
   if (tool !== 'text') commitTextBox();
+  if (tool !== 'select-wand') clearWandOverlay();
 }
 
 /* ============================================================
@@ -344,16 +340,12 @@ function cancelScrollPan() {
 }
 
 /* ============================================================
-   PINCH CON PONDERACIÓN (zoom + pan)
+   PINCH — SOLO ZOOM
    ============================================================ */
 function resetGestureState() {
   draw.pinchStartDist = 0;
   draw.pinchStartZoom = state.zoom;
   draw.pinchLastDist = 0;
-  draw.pinchLastMidX = 0;
-  draw.pinchLastMidY = 0;
-  draw.gestureAccumDist = 0;
-  draw.gestureAccumPan = 0;
 }
 
 function startPinch() {
@@ -369,17 +361,7 @@ function startPinch() {
   draw.pinchStartZoom = state.zoom;
   draw.pinchAnchorX = midX;
   draw.pinchAnchorY = midY;
-
-  const r = els.canvasWrap.getBoundingClientRect();
-  const z = state.zoom || 1;
-  draw.pinchAnchorLocalX = (midX - r.left) / z;
-  draw.pinchAnchorLocalY = (midY - r.top)  / z;
-
   draw.pinchLastDist = dist;
-  draw.pinchLastMidX = midX;
-  draw.pinchLastMidY = midY;
-  draw.gestureAccumDist = 0;
-  draw.gestureAccumPan = 0;
 }
 
 function updatePinch() {
@@ -388,84 +370,37 @@ function updatePinch() {
 
   const [a, b] = pts;
   const dist = Math.hypot(a.x - b.x, a.y - b.y);
-  const midX = (a.x + b.x) / 2;
-  const midY = (a.y + b.y) / 2;
+  if (draw.pinchStartDist < 4) return;
 
-  const dDist = Math.abs(dist - draw.pinchLastDist);
-  const dPan  = Math.hypot(midX - draw.pinchLastMidX, midY - draw.pinchLastMidY);
+  const scale = dist / draw.pinchStartDist;
+  const newZoom = Math.max(0.05, Math.min(20, draw.pinchStartZoom * scale));
 
-  draw.gestureAccumDist = draw.gestureAccumDist * 0.85 + dDist;
-  draw.gestureAccumPan  = draw.gestureAccumPan  * 0.85 + dPan;
-
-  const total = draw.gestureAccumDist + draw.gestureAccumPan;
-  const ratio = total > 0.001 ? draw.gestureAccumDist / total : 0.5;
-
-  let zoomWeight = 0, panWeight = 0;
-  if (ratio > 0.62) {
-    zoomWeight = 1; panWeight = 0;
-  } else if (ratio < 0.38) {
-    zoomWeight = 0; panWeight = 1;
-  } else {
-    zoomWeight = (ratio - 0.38) / 0.24;
-    panWeight  = 1 - zoomWeight;
-  }
-
-  if (zoomWeight > 0 && draw.pinchStartDist > 4) {
-    const scale = dist / draw.pinchStartDist;
-    const targetZoom = draw.pinchStartZoom * scale;
-    const oldZoom = state.zoom;
-    let newZoom = oldZoom + (targetZoom - oldZoom) * zoomWeight;
-    newZoom = Math.max(0.05, Math.min(20, newZoom));
-
-    state.zoom = newZoom;
-    els.canvasWrap.style.transformOrigin = '0 0';
-    els.canvasWrap.style.transform = `scale(${newZoom})`;
-    els.canvasWrap.style.width  = `${mainCanvas.width}px`;
-    els.canvasWrap.style.height = `${mainCanvas.height}px`;
-    scaleHandles(newZoom);
-    updateTextToolbarScale(newZoom);
-    const stZoom = document.getElementById('stZoom');
-    if (stZoom) stZoom.textContent = Math.round(newZoom * 100) + '%';
-  }
-
-  const followX = draw.pinchAnchorX + (midX - draw.pinchAnchorX) * panWeight;
-  const followY = draw.pinchAnchorY + (midY - draw.pinchAnchorY) * panWeight;
-
-  const z = state.zoom || 1;
-  const desiredWrapLeft = followX - draw.pinchAnchorLocalX * z;
-  const desiredWrapTop  = followY - draw.pinchAnchorLocalY * z;
-
-  const wrapRectNow = els.canvasWrap.getBoundingClientRect();
-  els.canvasScroll.scrollLeft += (wrapRectNow.left - desiredWrapLeft);
-  els.canvasScroll.scrollTop  += (wrapRectNow.top  - desiredWrapTop);
-
-  draw.pinchLastDist = dist;
-  draw.pinchLastMidX = midX;
-  draw.pinchLastMidY = midY;
+  applyZoomAnchored(newZoom, draw.pinchAnchorX, draw.pinchAnchorY);
 }
 
-/* ============================================================
-   CENTRAR CANVAS EN EL VIEWPORT
-   ============================================================
-   Usa getBoundingClientRect() del wrap REAL (post-transform).
-   Esto funciona sin importar el padding, el zoom o el tamaño.
-   ============================================================ */
-export function centerCanvasInView() {
+function applyZoomAnchored(newZoom, anchorClientX, anchorClientY) {
   const scroll = els.canvasScroll;
-  const wrap = els.canvasWrap;
-  if (!scroll || !wrap) return;
+  const rect = scroll.getBoundingClientRect();
 
-  // Forzar reflow para asegurar medidas actualizadas
-  void wrap.offsetWidth;
+  const sx = (anchorClientX - rect.left) + scroll.scrollLeft;
+  const sy = (anchorClientY - rect.top)  + scroll.scrollTop;
 
-  const sRect = scroll.getBoundingClientRect();
-  const wRect = wrap.getBoundingClientRect();
+  const oldZoom = state.zoom;
+  const ratio = newZoom / oldZoom;
+  state.zoom = newZoom;
 
-  const dx = (wRect.left + wRect.width / 2) - (sRect.left + sRect.width / 2);
-  const dy = (wRect.top + wRect.height / 2) - (sRect.top + sRect.height / 2);
+  els.canvasWrap.style.transformOrigin = '0 0';
+  els.canvasWrap.style.transform = `scale(${newZoom})`;
+  els.canvasWrap.style.width  = `${mainCanvas.width}px`;
+  els.canvasWrap.style.height = `${mainCanvas.height}px`;
 
-  scroll.scrollLeft = scroll.scrollLeft + dx;
-  scroll.scrollTop  = scroll.scrollTop  + dy;
+  scroll.scrollLeft = sx * ratio - (anchorClientX - rect.left);
+  scroll.scrollTop  = sy * ratio - (anchorClientY - rect.top);
+
+  scaleHandles(newZoom);
+  updateTextToolbarScale(newZoom);
+  const stZoom = document.getElementById('stZoom');
+  if (stZoom) stZoom.textContent = Math.round(newZoom * 100) + '%';
 }
 
 /* ============================================================
@@ -682,6 +617,11 @@ function commitShape(x0, y0, x1, y1, tool) {
 /* ============================================================
    VARITA MÁGICA
    ============================================================ */
+function clearWandOverlay() {
+  if (!wandCtx) return;
+  wandCtx.clearRect(0, 0, wandOverlay.width, wandOverlay.height);
+}
+
 function magicWandSelect(x, y) {
   const px = Math.round(x);
   const py = Math.round(y);
@@ -765,12 +705,75 @@ function magicWandSelect(x, y) {
     mainCtx.restore();
   }
 
+  // ✅ Dibujar la máscara en el overlay de la varita para que se vea el área seleccionada
+  drawWandMask(mask, W, H);
+
   draw.floating = {
     x: minX, y: minY, w: rw, h: rh, rotation: 0, source: 'selection'
   };
   renderFloating();
   pushHistory(); markDirty();
   setStatus(`Varita mágica: ${count} px seleccionados`);
+}
+
+/**
+ * Dibuja el contorno "marching ants" + tinte azul claro alrededor de
+ * los píxeles enmascarados, en la capa wandOverlay.
+ */
+function drawWandMask(mask, W, H) {
+  if (!wandCtx) return;
+  if (wandOverlay.width !== W || wandOverlay.height !== H) {
+    wandOverlay.width = W;
+    wandOverlay.height = H;
+  }
+  wandCtx.clearRect(0, 0, W, H);
+
+  // Construir ImageData del overlay: tinte azul en las zonas seleccionadas
+  const img = wandCtx.createImageData(W, H);
+  const d = img.data;
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i]) {
+      const j = i * 4;
+      d[j]     = 79;
+      d[j + 1] = 70;
+      d[j + 2] = 229;
+      d[j + 3] = 70; // alpha ~27%
+    }
+  }
+  wandCtx.putImageData(img, 0, 0);
+
+  // Contorno tipo "marching ants" sobre los bordes de la máscara
+  wandCtx.save();
+  wandCtx.strokeStyle = '#ffffff';
+  wandCtx.lineWidth = 1;
+  wandCtx.setLineDash([4, 4]);
+
+  // Recorremos y dibujamos segmentos donde cambia el valor de la máscara
+  wandCtx.beginPath();
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const idx = y * W + x;
+      if (!mask[idx]) continue;
+      // Vecinos: comprobar cambios para trazar contorno
+      const up    = y > 0     ? mask[idx - W] : 0;
+      const down  = y < H - 1 ? mask[idx + W] : 0;
+      const left  = x > 0     ? mask[idx - 1] : 0;
+      const right = x < W - 1 ? mask[idx + 1] : 0;
+
+      if (!up)    { wandCtx.moveTo(x, y);         wandCtx.lineTo(x + 1, y); }
+      if (!down)  { wandCtx.moveTo(x, y + 1);     wandCtx.lineTo(x + 1, y + 1); }
+      if (!left)  { wandCtx.moveTo(x, y);         wandCtx.lineTo(x, y + 1); }
+      if (!right) { wandCtx.moveTo(x + 1, y);     wandCtx.lineTo(x + 1, y + 1); }
+    }
+  }
+  wandCtx.stroke();
+
+  // Segunda pasada en negro desplazada para efecto "marching ants"
+  wandCtx.strokeStyle = '#000000';
+  wandCtx.setLineDash([4, 4]);
+  wandCtx.lineDashOffset = 4;
+  wandCtx.stroke();
+  wandCtx.restore();
 }
 
 function getPixel(data, x, y, width) {
@@ -780,6 +783,42 @@ function getPixel(data, x, y, width) {
 function colorsEqual(a, b, tol) {
   return Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol &&
          Math.abs(a[2] - b[2]) <= tol && Math.abs(a[3] - b[3]) <= tol;
+}
+
+/* ============================================================
+   ELIMINAR SELECCIÓN
+   ============================================================
+   Borra el contenido de la selección activa (flotante o en curso)
+   y rellena con blanco/transparente según el estado del fondo.
+   ============================================================ */
+export function deleteSelection() {
+  // Caso 1: hay un flotante (selección ya cortada, ej. varita o rect)
+  if (draw.floating) {
+    draw.floating = null;
+    floatingLayer.hidden = true;
+    floatingLayer.style.transform = '';
+    clearWandOverlay();
+    setStatus('Selección eliminada');
+    return true;
+  }
+
+  // Caso 2: hay una selección en curso (rect/lasso)
+  const sel = getActiveSelection();
+  if (sel && !sel.floating && sel.rect) {
+    const { x, y, w, h } = sel.rect;
+    if (state.transparentBg) {
+      mainCtx.clearRect(x, y, w, h);
+    } else {
+      mainCtx.fillStyle = '#ffffff';
+      mainCtx.fillRect(x, y, w, h);
+    }
+    draw.selection = null;
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    setStatus('Selección eliminada');
+    return true;
+  }
+
+  return false;
 }
 
 /* ============================================================
@@ -1032,6 +1071,7 @@ function updateCurrentHistoryEntry() {
    ============================================================ */
 function beginSelection(x, y) {
   if (draw.floating) commitFloating();
+  clearWandOverlay();
   draw.selection = { x0: x, y0: y, x1: x, y1: y, lasso: state.tool === 'select-lasso' ? [{ x, y }] : null };
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 }
@@ -1204,6 +1244,7 @@ export function commitFloating() {
   draw.floating = null;
   floatingLayer.hidden = true;
   floatingLayer.style.transform = '';
+  clearWandOverlay();
   pushHistory(); markDirty();
   setStatus('Selección fijada');
 }
@@ -1537,6 +1578,7 @@ export function doRotate(dir) {
 
   mainCanvas.width = h; mainCanvas.height = w;
   overlayCanvas.width = h; overlayCanvas.height = w;
+  wandOverlay.width = h; wandOverlay.height = w;
   mainCtx.drawImage(tmp, 0, 0);
   syncWrapSize(); updateFooterInfo();
   setStatus(`Rotado ${dir > 0 ? '90° →' : '90° ←'}`);
@@ -1571,6 +1613,7 @@ export function doResize(w, h) {
 
   mainCanvas.width = w; mainCanvas.height = h;
   overlayCanvas.width = w; overlayCanvas.height = h;
+  wandOverlay.width = w; wandOverlay.height = h;
 
   mainCtx.imageSmoothingEnabled = true;
   mainCtx.imageSmoothingQuality = 'high';
@@ -1593,6 +1636,7 @@ export function cropToSelection(rect) {
 
   mainCanvas.width = w; mainCanvas.height = h;
   overlayCanvas.width = w; overlayCanvas.height = h;
+  wandOverlay.width = w; wandOverlay.height = h;
   mainCtx.drawImage(tmp, 0, 0);
 
   syncWrapSize(); updateFooterInfo();
@@ -1677,6 +1721,8 @@ function updateHandleResize(ev) {
   mainCanvas.height = newH;
   overlayCanvas.width = newW;
   overlayCanvas.height = newH;
+  wandOverlay.width = newW;
+  wandOverlay.height = newH;
 
   if (!state.transparentBg) {
     mainCtx.fillStyle = '#ffffff';
@@ -1713,32 +1759,23 @@ function endHandleResize() {
    ZOOM
    ============================================================ */
 function applyZoom(newZoom, centerClientX, centerClientY) {
-  const rect = els.canvasScroll.getBoundingClientRect();
-
-  if (centerClientX == null) centerClientX = rect.left + rect.width / 2;
-  if (centerClientY == null) centerClientY = rect.top + rect.height / 2;
-
-  const oldZoom = state.zoom || 1;
-
-  const wrapRect = els.canvasWrap.getBoundingClientRect();
-  const localX = (centerClientX - wrapRect.left) / oldZoom;
-  const localY = (centerClientY - wrapRect.top)  / oldZoom;
-
+  const scroll = els.canvasScroll;
+  const rect = scroll.getBoundingClientRect();
+  const sx = centerClientX - rect.left + scroll.scrollLeft;
+  const sy = centerClientY - rect.top  + scroll.scrollTop;
+  const ratio = newZoom / state.zoom;
   state.zoom = newZoom;
+
   els.canvasWrap.style.transformOrigin = '0 0';
   els.canvasWrap.style.transform = `scale(${newZoom})`;
   els.canvasWrap.style.width  = `${mainCanvas.width}px`;
   els.canvasWrap.style.height = `${mainCanvas.height}px`;
 
+  scroll.scrollLeft = sx * ratio - (centerClientX - rect.left);
+  scroll.scrollTop  = sy * ratio - (centerClientY - rect.top);
+
   scaleHandles(newZoom);
   updateTextToolbarScale(newZoom);
-
-  const desiredWrapLeft = centerClientX - localX * newZoom;
-  const desiredWrapTop  = centerClientY - localY * newZoom;
-  const newWrapRect = els.canvasWrap.getBoundingClientRect();
-  els.canvasScroll.scrollLeft += (newWrapRect.left - desiredWrapLeft);
-  els.canvasScroll.scrollTop  += (newWrapRect.top  - desiredWrapTop);
-
   const stZoom = document.getElementById('stZoom');
   if (stZoom) stZoom.textContent = Math.round(newZoom * 100) + '%';
 }
@@ -1773,26 +1810,23 @@ export function zoomFit() {
   const scroll = els.canvasScroll;
   const rect = scroll.getBoundingClientRect();
 
+  state.zoom = 1;
+  els.canvasWrap.style.transform = 'scale(1)';
+  els.canvasWrap.style.transformOrigin = '0 0';
+  els.canvasWrap.style.width  = `${mainCanvas.width}px`;
+  els.canvasWrap.style.height = `${mainCanvas.height}px`;
+
   const availW = rect.width  - 48;
   const availH = rect.height - 200;
   const scaleX = availW / mainCanvas.width;
   const scaleY = availH / mainCanvas.height;
   const z = Math.max(0.05, Math.min(20, Math.min(scaleX, scaleY)));
 
-  state.zoom = z;
-  els.canvasWrap.style.transformOrigin = '0 0';
-  els.canvasWrap.style.transform = `scale(${z})`;
-  els.canvasWrap.style.width  = `${mainCanvas.width}px`;
-  els.canvasWrap.style.height = `${mainCanvas.height}px`;
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  applyZoom(z, cx, cy);
 
-  scaleHandles(z);
-  updateTextToolbarScale(z);
-
-  const stZoom = document.getElementById('stZoom');
-  if (stZoom) stZoom.textContent = Math.round(z * 100) + '%';
-
-  // Centrar el canvas SIN usar rAF para asegurar medidas actualizadas.
-  centerCanvasInView();
+  requestAnimationFrame(() => { scroll.scrollLeft = 0; scroll.scrollTop = 0; });
 }
 
 export function zoom100() {
@@ -1803,14 +1837,14 @@ export function zoom100() {
 export function zoomReset() {
   state.zoom = 1;
   els.canvasWrap.style.transform = 'scale(1)';
-  els.canvasWrap.style.transformOrigin = '0 0';
   els.canvasWrap.style.width  = `${mainCanvas.width}px`;
   els.canvasWrap.style.height = `${mainCanvas.height}px`;
+  els.canvasScroll.scrollLeft = 0;
+  els.canvasScroll.scrollTop  = 0;
   scaleHandles(1);
   updateTextToolbarScale(1);
   const stZoom = document.getElementById('stZoom');
   if (stZoom) stZoom.textContent = '100%';
-  centerCanvasInView();
 }
 
 /* ============================================================

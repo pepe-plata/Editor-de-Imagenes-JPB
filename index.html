@@ -153,6 +153,12 @@
 
   <div class="tb-sep"></div>
 
+  <button class="tb-btn" data-action="delete" title="Eliminar selección (Del)" aria-label="Eliminar">
+    <img src="icons/delete.png" alt="" class="ico" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ico-fallback',textContent:'🗑️'}))" />
+  </button>
+
+  <div class="tb-sep"></div>
+
   <button class="tb-btn tb-btn-color" data-action="color" title="Color" aria-label="Color">
     <span id="colorBtnSwatch" class="color-btn-swatch"></span>
     <span class="tb-caret"></span>
@@ -654,6 +660,7 @@
           <li><kbd>Ctrl</kbd>+<kbd>Y</kbd> — Rehacer</li>
           <li><kbd>Ctrl</kbd>+<kbd>C</kbd> — Copiar</li>
           <li><kbd>Ctrl</kbd>+<kbd>V</kbd> — Pegar</li>
+          <li><kbd>Del</kbd> — Eliminar selección</li>
           <li><kbd>+</kbd>/<kbd>-</kbd> — Zoom</li>
           <li><kbd>0</kbd> — Ajustar</li>
           <li><kbd>1</kbd> — Zoom 100 %</li>

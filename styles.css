@@ -510,20 +510,16 @@ body {
   margin: 0;
   padding: 0;
 }
-
-/* ✅ Padding MUY grande en todas direcciones.
-   Esto garantiza que:
-   1. Siempre hay contenido a la izquierda, derecha, arriba y abajo.
-   2. El usuario puede scrollear el canvas a cualquier posición.
-   3. El centrado manual (mediante pan) es posible en todas direcciones.
-   El centrado inicial lo hace centerCanvasInView() desde JS. */
 .canvas-center {
-  display: block;
-  box-sizing: content-box;
-  padding: 100vh 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 24px;
+  min-width: 100%;
+  min-height: 100%;
+  width: max-content;
+  box-sizing: border-box;
   background: transparent;
-  border: 0;
-  margin: 0;
 }
 .canvas-wrap {
   position: relative;
@@ -539,7 +535,8 @@ body {
     linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
-  margin: 0;
+  flex-shrink: 0;
+  margin: auto;
 }
 #mainCanvas {
   display: block;
@@ -552,7 +549,7 @@ body {
   display: block;
 }
 
-/* ─── Handles del canvas — circulares como los de figura ── */
+/* ─── Handles del canvas ──────────────────────────────────── */
 .handles {
   position: absolute;
   inset: 0;
@@ -562,10 +559,10 @@ body {
   position: absolute;
   width: var(--handle-size);
   height: var(--handle-size);
-  background: #fff;
-  border: 3px solid var(--primary);
-  border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  background: var(--primary);
+  border: 3px solid #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45);
   pointer-events: auto;
   margin-left: calc(var(--handle-size) / -2);
   margin-top:  calc(var(--handle-size) / -2);
@@ -1106,6 +1103,20 @@ kbd {
 .canvas-wrap[data-cursor="pan"]         { cursor: grab; }
 .canvas-wrap[data-cursor="pan"].panning { cursor: grabbing; }
 
+/* ════════════════════════════════════════════════════════════
+   VARITA MÁGICA — previsualización de selección (marching ants)
+   Capa que se dibuja SOBRE el canvas principal, dentro del wrap,
+   para que se vea el contorno de la región seleccionada.
+   ════════════════════════════════════════════════════════════ */
+.wand-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  z-index: 4;
+  display: block;
+  mix-blend-mode: normal;
+}
+
 /* ─── Responsive ───────────────────────────────────────────── */
 @media (max-width: 720px) {
   :root { --handle-size: 22px; }
@@ -1132,7 +1143,7 @@ kbd {
   .tolerance-slider { left: auto; right: 8px; }
   .help-list.two-col { grid-template-columns: 1fr; }
   .header-sep { display: none; }
-  .canvas-center { padding: 100vh 100vw; }
+  .canvas-center { padding: 100px 16px; }
   .te-text { font-size: 22px; }
   .te-btn { width: 34px; height: 34px; font-size: 15px; }
   .te-select, .te-num { height: 34px; }
